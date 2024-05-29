@@ -35,16 +35,63 @@ struct std::hash<Edge> {
     }
 };
 
-struct ShortestPathReturn{
+struct SourceTargetReturn{
     std::vector<int> path;
     std::vector<int> distance;
-    ShortestPathReturn(std::vector<int> path_, std::vector<int> distance_): path(path_), distance(distance_){}
+    SourceTargetReturn(std::vector<int> path_, std::vector<int> distance_): path(path_), distance(distance_){}
+};
+
+struct SourceAllReturn{
+    std::vector<int> distances;
+    SourceAllReturn(std::vector<int> distances_): distances(distances_){}
 };
 
 struct AllTerminalReturn{
     std::vector<std::vector<int>> distances;
     AllTerminalReturn(std::vector<std::vector<int>> distances_): distances(distances_){}
 };
+
+int n_digits(int n){
+    if (n == 0) {return 1;}
+    int digits = 0;
+    while (n) {n /= 10; digits++;}
+    return digits;
+}
+
+void print_spaced(int x, int n){
+    int digits = n_digits(x);
+    std::cout << x;
+    for (int i = 0; i < n-digits; i++) {std::cout << " ";}
+}
+
+void printDistMatrix(std::vector<std::vector<int>> distances, int V){
+    std::vector<int> max_dist(V+1, -1);
+    for (int X = 0; X < V; X++) {
+        max_dist[X] = std::max(max_dist[X], X);
+        for (int Y = 0; Y < V; Y++) {
+            max_dist[Y+1] = std::max(max_dist[Y], distances[X][Y]);   
+        }
+    }
+    max_dist[0] = V-1;
+    for (int X = 0; X < V+1; X++) {
+        max_dist[X] = n_digits(max_dist[X]) + 1;
+    }
+    // max_dist[i] is now the maximum number of digits in the i-th column (0 is index)
+
+    std::cout << "Distances: \n";
+    for (int X = 0; X < V+1; X++) {
+        if (X == 0) {std::cout << "TO "; for (int i=0; i<max_dist[0]+5-3; ++i) {std::cout << " ";}}
+        else {std::cout << "FROM "; print_spaced(X-1, max_dist[0]);}
+        std::cout << " ";
+
+        for (int Y = 1; Y < V+1; Y++) {
+            if (X == 0) {print_spaced(Y-1, max_dist[Y]);}
+            else {print_spaced(distances[X-1][Y-1], max_dist[Y]);}
+        }
+        std::cout << "\n";
+    }
+    std::cout << "\n\n" << std::flush;
+}
 
 class Graph {
     // Directed weighted graph
@@ -66,13 +113,12 @@ public:
     }
 
     void compare_algorithms(int s, int d, bool debug = true) {
-        std::vector<std::string> names_shortest{"DijkastraSourceAll", "DijkstraSourceTarget", "Delta", "UNWEIGHTED BFS_SourceTarget", "UNWEIGHTED BFS_AllTargets", "UNWEIGHTED DFS_SourceTarget", "UNWEIGHTED DFS_AllTargets"};
-        std::vector<ShortestPathReturn(Graph::*)(int, int)> shortest_paths {&Graph::DijkstraSourceAll, &Graph::DijkstraSourceTarget, &Graph::deltaStepping, &Graph::BFS_ST, &Graph::BFS_AT, &Graph::DFS_ST, &Graph::DFS_AT
-        };
-        for (size_t i = 0; i < names_shortest.size(); i++) {
-            std::cout << "   " << names_shortest[i] << ": " << std::flush;
+        std::vector<std::string> names_ST{"DijkstraSourceTarget", "Delta", "UNWEIGHTED BFS_SourceTarget", "UNWEIGHTED DFS_SourceTarget"};
+        std::vector<SourceTargetReturn(Graph::*)(int, int)> ST_Funcs {&Graph::DijkstraSourceTarget, &Graph::deltaStepping, &Graph::BFS_ST, &Graph::DFS_ST};
+        for (size_t i = 0; i < names_ST.size(); i++) {
+            std::cout << "   " << names_ST[i] << ": " << std::flush;
             auto start = high_resolution_clock::now();
-            ShortestPathReturn r = ((*this).*shortest_paths[i])(s, d);
+            SourceTargetReturn r = ((*this).*ST_Funcs[i])(s, d);
             auto stop = high_resolution_clock::now();
             auto duration = duration_cast<microseconds>(stop - start);
             std::cout << (double) duration.count()/1000 << " milliseconds. \n\n";
@@ -88,15 +134,83 @@ public:
             }
             std::cout << std::flush;
         }
+
+        // Define similar things for all terminal from the source-all terminal problem
+        std::vector<std::string> names_AT{"DijkastraSourceAll", "UNWEIGHTED BFS_SourceAll", "UNWEIGHTED DFS_SourceAll"};
+        std::vector<SourceAllReturn(Graph::*)(int, int)> AT_Funcs {&Graph::DijkstraSourceAll, &Graph::BFS_AT, &Graph::DFS_AT};
+        for (size_t i = 0; i < names_AT.size(); i++){
+            std::cout << "   " << names_AT[i] << ": " << std::flush;
+            auto start = high_resolution_clock::now();
+            SourceAllReturn r = ((*this).*AT_Funcs[i])(s, d);
+            auto stop = high_resolution_clock::now();
+            auto duration = duration_cast<microseconds>(stop - start);
+            std::cout << (double) duration.count()/1000 << " milliseconds. \n\n";
+            if (debug) {
+                std::cout << "Distances: \n";
+                for (int v = 0; v < V; v++) {std::cout << v << ": " << r.distances[v] << "\n";}
+                std::cout << "\n\n";
+            }
+            std::cout << std::flush;
+        }
+
+        // Generate All-Terminal from Source-All-Terminal (SEQUENTIAL)
+        for (size_t i = 0; i < names_AT.size(); i++){
+            std::cout << "   Sequential " << names_AT[i] << ": " << std::flush;
+            auto start = high_resolution_clock::now();
+            AllTerminalReturn r = SourceAll_To_AllTerminal(AT_Funcs[i]);
+            auto stop = high_resolution_clock::now();
+            auto duration = duration_cast<microseconds>(stop - start);
+            std::cout << (double) duration.count()/1000 << " milliseconds. \n\n";
+            if (debug) {
+                printDistMatrix(r.distances, V);
+            }
+            std::cout << std::flush;
+        }
+
+        // Generate All-Terminal from Source-All-Terminal (PARALLEL)
+        for (size_t i = 0; i < names_AT.size(); i++){
+            std::cout << "   Parallel " << names_AT[i] << ": " << std::flush;
+            auto start = high_resolution_clock::now();
+            AllTerminalReturn r = SourceAll_To_AllTerminalParallel(AT_Funcs[i]);
+            auto stop = high_resolution_clock::now();
+            auto duration = duration_cast<microseconds>(stop - start);
+            std::cout << (double) duration.count()/1000 << " milliseconds. \n\n";
+            if (debug) {
+                printDistMatrix(r.distances, V);
+            }
+            std::cout << std::flush;
+        }
     }
 
-    ShortestPathReturn BFS_ST(int s, int d){return FS(s, d, false, true);}
-    ShortestPathReturn BFS_AT(int s, int d){return FS(s, d, true, true);}
-    ShortestPathReturn DFS_ST(int s, int d){return FS(s, d, false, false);}
-    ShortestPathReturn DFS_AT(int s, int d){return FS(s, d, true, false);}
+    AllTerminalReturn SourceAll_To_AllTerminal(SourceAllReturn(Graph::*F)(int, int)){
+        std::vector<std::vector<int>> distances;
+        for (int i = 0; i < V; i++) {
+            SourceAllReturn r = ((*this).*F)(i, i); // could do i, -1 too
+            distances.push_back(r.distances);
+        }
+        return AllTerminalReturn(distances); 
+    }
+
+    AllTerminalReturn SourceAll_To_AllTerminalParallel(SourceAllReturn(Graph::*F)(int, int)){
+        std::vector<std::vector<int>> distances(V);
+        std::vector<std::thread> threads(V);
+        for (int i = 0; i < V; i++) {
+            threads[i] = std::thread([this, &distances, F, i]() {
+            SourceAllReturn r = ((*this).*F)(i, i); // could do i, -1 too
+            distances[i] = r.distances;
+            });
+        }
+        for (int i = 0; i < V; i++) {threads[i].join();}
+        return AllTerminalReturn(distances); 
+    }
+
+    SourceTargetReturn BFS_ST(int s, int d){return FS(s, d, false, true);}
+    SourceAllReturn BFS_AT(int s, int d){return SourceAllReturn(FS(s, d, true, true).distance);}
+    SourceTargetReturn DFS_ST(int s, int d){return FS(s, d, false, false);}
+    SourceAllReturn DFS_AT(int s, int d){return SourceAllReturn(FS(s, d, true, false).distance);}
 
     // FS implementation (BFS, DFS, all_targets or not)
-    ShortestPathReturn FS(int s, int d, bool all_targets, bool BFS){
+    SourceTargetReturn FS(int s, int d, bool all_targets, bool BFS){
         std::vector<int> rpath; // Path reconstruction
         std::unordered_set<int> visited; // Vertices already visited
         
@@ -140,14 +254,14 @@ public:
             path.push_back(rpath[rpath.size() - i - 1]);
         }
 
-        return ShortestPathReturn(path, dist);
+        return SourceTargetReturn(path, dist);
     }
 
-    ShortestPathReturn DijkstraSourceAll(int s, int d){return Dijkstra(s, d, true);}
-    ShortestPathReturn DijkstraSourceTarget(int s, int d){return Dijkstra(s, d, false);}
+    SourceAllReturn DijkstraSourceAll(int s, int d){return SourceAllReturn(Dijkstra(s, d, true).distance);}
+    SourceTargetReturn DijkstraSourceTarget(int s, int d){return Dijkstra(s, d, false);}
 
     // Dijkstra implementation for (positively) weighted graphs
-    ShortestPathReturn Dijkstra(int s, int d, bool all_targets) {
+    SourceTargetReturn Dijkstra(int s, int d, bool all_targets) {
         std::vector<int> rpath; // Path reconstruction
         std::unordered_set<int> visited; // Vertices already visited
         std::unordered_set<int> reachable_unvisited; // Next vertices to visit (should make dijkstra faster)
@@ -195,7 +309,7 @@ public:
         std::vector<int> path;
         for (size_t i = 0; i < rpath.size(); ++i) {path.push_back(rpath[rpath.size() - i - 1]);}
 
-        return ShortestPathReturn(path, dist);
+        return SourceTargetReturn(path, dist);
     }
 
     // single thread delta-stepping
@@ -205,7 +319,7 @@ public:
     // TODO: relax edges of a bucket in parallel
     // TODO: idea: order the edges by weight for a single pass instead of 2.
     // TODO: any other optimization that we can find in the data structures we use
-    ShortestPathReturn deltaStepping(int source, int destination) {
+    SourceTargetReturn deltaStepping(int source, int destination) {
         std::vector<int> dist(this->V, std::numeric_limits<int>::max());
         std::vector<int> prev(this->V, -1);
         std::unordered_map<int, std::list<int>> buckets;
@@ -261,7 +375,7 @@ public:
         }
         std::vector<int> path;
         for (size_t i = 0; i < rpath.size(); ++i) {path.push_back(rpath[rpath.size() - i - 1]);}
-        return ShortestPathReturn(path, dist);
+        return SourceTargetReturn(path, dist);
     }
 };
 
@@ -276,6 +390,6 @@ int main() {
     g.addEdge(4, 5, 1);
     g.addEdge(5, 6, 3);
 
-    g.compare_algorithms(0, 5, false);
+    g.compare_algorithms(0, 5);
     return 0;
 }
