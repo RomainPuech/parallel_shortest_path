@@ -209,13 +209,15 @@ public:
         std::vector<int> dist(this->V, std::numeric_limits<int>::max());
         std::vector<int> prev(this->V, -1);
         std::unordered_map<int, std::list<int>> buckets;
-        std::set<int> unvisited;
 
         dist[source] = 0;
         buckets[0].push_back(source);
 
-        for (int i = 0; !buckets.empty(); ++i) {
-            if (buckets.find(i) == buckets.end()) continue;
+        while(!buckets.empty()) {
+            int i=0;
+            while(buckets.find(i)==buckets.end()) {
+                ++i;
+            }
 
             std::list<int> bucket = buckets[i];
             buckets.erase(i);
@@ -232,7 +234,11 @@ public:
                             dist[e.vertex] = new_dist;
                             prev[e.vertex] = u;
                             int bucket_index = new_dist / delta;
-                            buckets[bucket_index].push_back(e.vertex);
+                            if(buckets.find(bucket_index) == buckets.end()) {
+                                buckets[bucket_index] = std::list<int>({e.vertex});
+                            } else {
+                                buckets[bucket_index].push_back(e.vertex);
+                            }
                         }
                     }
                 }
@@ -247,7 +253,11 @@ public:
                             dist[e.vertex] = new_dist;
                             prev[e.vertex] = u;
                             int bucket_index = new_dist / delta;
-                            buckets[bucket_index].push_back(e.vertex);
+                            if(buckets.find(bucket_index) == buckets.end()) {
+                                buckets[bucket_index] = std::list<int>({e.vertex});
+                            } else {
+                                buckets[bucket_index].push_back(e.vertex);
+                            }
                         }
                     }
                 }
@@ -276,6 +286,6 @@ int main() {
     g.addEdge(4, 5, 1);
     g.addEdge(5, 6, 3);
 
-    g.compare_algorithms(0, 5, false);
+    g.compare_algorithms(0, 5, true);
     return 0;
 }
