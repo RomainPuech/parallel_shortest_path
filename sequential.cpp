@@ -14,6 +14,7 @@ using namespace std::chrono;
 
 #include <thread>
 #include <mutex>
+#include <barrier>
 
 #pragma GCC diagnostic ignored "-Wvla"
 
@@ -103,8 +104,10 @@ class Graph {
 
 public:
     int delta;
-    Graph(int V, int delta): V(V), delta(delta){
+    int n_threads;
+    Graph(int V, int delta, int n_threads_): V(V), delta(delta) {
         adj = new std::unordered_set<Edge>[V];
+        n_threads = std::min(n_threads_, V);
     }
     
     void addEdge(int v, int w, int c) {
@@ -139,12 +142,12 @@ public:
         }
 
         // Define similar things for all terminal from the source-all terminal problem
-        std::vector<std::string> names_AT{"DijkastraSourceAll", "UNWEIGHTED BFS_SourceAll", "UNWEIGHTED DFS_SourceAll"};
-        std::vector<SourceAllReturn(Graph::*)(int, int)> AT_Funcs {&Graph::DijkstraSourceAll, &Graph::BFS_AT, &Graph::DFS_AT};
-        for (size_t i = 0; i < names_AT.size(); i++){
-            std::cout << "   " << names_AT[i] << ": " << std::flush;
+        std::vector<std::string> names_SA{"DijkastraSourceAll", "UNWEIGHTED BFS_SourceAll", "UNWEIGHTED DFS_SourceAll"};
+        std::vector<SourceAllReturn(Graph::*)(int, int)> SA_Funcs {&Graph::DijkstraSourceAll, &Graph::BFS_AT, &Graph::DFS_AT};
+        for (size_t i = 0; i < names_SA.size(); i++){
+            std::cout << "   " << names_SA[i] << ": " << std::flush;
             auto start = high_resolution_clock::now();
-            SourceAllReturn r = ((*this).*AT_Funcs[i])(s, d);
+            SourceAllReturn r = ((*this).*SA_Funcs[i])(s, d);
             auto stop = high_resolution_clock::now();
             auto duration = duration_cast<microseconds>(stop - start);
             std::cout << (double) duration.count()/1000 << " milliseconds. \n\n";
@@ -157,10 +160,10 @@ public:
         }
 
         // Generate All-Terminal from Source-All-Terminal (SEQUENTIAL)
-        for (size_t i = 0; i < names_AT.size(); i++){
-            std::cout << "   Sequential " << names_AT[i] << ": " << std::flush;
+        for (size_t i = 0; i < names_SA.size(); i++){
+            std::cout << "   Sequential All-Terminal " << names_SA[i] << ": " << std::flush;
             auto start = high_resolution_clock::now();
-            AllTerminalReturn r = SourceAll_To_AllTerminal(AT_Funcs[i]);
+            AllTerminalReturn r = SourceAll_To_AllTerminal(SA_Funcs[i]);
             auto stop = high_resolution_clock::now();
             auto duration = duration_cast<microseconds>(stop - start);
             std::cout << (double) duration.count()/1000 << " milliseconds. \n\n";
@@ -171,10 +174,10 @@ public:
         }
 
         // Generate All-Terminal from Source-All-Terminal (PARALLEL)
-        for (size_t i = 0; i < names_AT.size(); i++){
-            std::cout << "   Parallel " << names_AT[i] << ": " << std::flush;
+        for (size_t i = 0; i < names_SA.size(); i++){
+            std::cout << "   Parallel All-Terminal " << names_SA[i] << ": " << std::flush;
             auto start = high_resolution_clock::now();
-            AllTerminalReturn r = SourceAll_To_AllTerminalParallel(AT_Funcs[i]);
+            AllTerminalReturn r = SourceAll_To_AllTerminalParallel(SA_Funcs[i]);
             auto stop = high_resolution_clock::now();
             auto duration = duration_cast<microseconds>(stop - start);
             std::cout << (double) duration.count()/1000 << " milliseconds. \n\n";
@@ -183,6 +186,23 @@ public:
             }
             std::cout << std::flush;
         }
+
+        // Do All-Terminal algorithms
+        std::vector<std::string> names_AT{"Floyd_Warshall_Sequential", "Floyd_Warshall_Parallel"};
+        std::vector<AllTerminalReturn(Graph::*)()> AT_Funcs {&Graph::Floyd_Warshall_Sequential, &Graph::Floyd_Warshall_Parallel};
+        for (size_t i = 0; i < names_AT.size(); i++){
+            std::cout << "   " << names_AT[i] << ": " << std::flush;
+            auto start = high_resolution_clock::now();
+            AllTerminalReturn r = ((*this).*AT_Funcs[i])();
+            auto stop = high_resolution_clock::now();
+            auto duration = duration_cast<microseconds>(stop - start);
+            std::cout << (double) duration.count()/1000 << " milliseconds. \n\n";
+            if (debug) {
+                printDistMatrix(r.distances, V);
+            }
+            std::cout << std::flush;
+        }
+
     }
 
     AllTerminalReturn SourceAll_To_AllTerminal(SourceAllReturn(Graph::*F)(int, int)){
@@ -196,13 +216,22 @@ public:
 
     AllTerminalReturn SourceAll_To_AllTerminalParallel(SourceAllReturn(Graph::*F)(int, int)){
         std::vector<std::vector<int>> distances(V);
-        std::vector<std::thread> threads(V);
-        for (int i = 0; i < V; i++) {
-            threads[i] = std::thread([this, &distances, F, i]() {
-            SourceAllReturn r = ((*this).*F)(i, i); // could do i, -1 too
-            distances[i] = r.distances;
+        std::vector<std::thread> threads(n_threads);
+        int block_size = V/n_threads;
+        for (int i = 0; i < n_threads-1; i++) {
+            threads[i] = std::thread([this, &distances, F, i, block_size]() {
+                for (int it = i*block_size; it < (i+1)*block_size; it++) {
+                    SourceAllReturn r = ((*this).*F)(it, it); // could do it, -1 too
+                    distances[it] = r.distances;
+                }
             });
         }
+        threads[n_threads-1] = std::thread([this, &distances, F, block_size]() {
+            for (int it = (n_threads-1)*block_size; it < V; it++) {
+                SourceAllReturn r = ((*this).*F)(it, it); // could do it, -1 too
+                distances[it] = r.distances;
+            }
+        });
         for (int i = 0; i < V; i++) {threads[i].join();}
         return AllTerminalReturn(distances); 
     }
@@ -315,6 +344,87 @@ public:
         return SourceTargetReturn(path, dist);
     }
 
+    AllTerminalReturn Floyd_Warshall_Sequential(){
+        std::vector<std::vector<int>> dist(V, std::vector<int>(V, INT_MAX));
+
+        // Initialize the distance of points to themselves to 0
+        for (int i = 0; i < V; i++) {dist[i][i] = 0;}
+
+        // Initialize the distance of points to their neighbors
+        for (int i = 0; i < V; i++) {
+            for (const Edge e : adj[i]) {
+                dist[i][e.vertex] = e.cost;
+            }
+        }
+
+        // Iterate over all intermediate points
+        for (int k = 0; k < V; k++) {
+            for (int i = 0; i < V; i++) {
+                for (int j = 0; j < V; j++) {
+                    if (dist[i][k] != INT_MAX && dist[k][j] != INT_MAX && dist[i][j] > dist[i][k] + dist[k][j]){
+                        dist[i][j] = dist[i][k] + dist[k][j];
+                    }
+                }
+            }
+        }
+        return AllTerminalReturn(dist);
+    }
+
+    AllTerminalReturn Floyd_Warshall_Parallel(){
+        std::vector<std::vector<int>> dist(V, std::vector<int>(V, INT_MAX));
+
+        // Initialize the distance of points to themselves to 0
+        for (int i = 0; i < V; i++) {dist[i][i] = 0;}
+
+        // Initialize the distance of points to their neighbors
+        for (int i = 0; i < V; i++) {
+            for (const Edge e : adj[i]) {
+                dist[i][e.vertex] = e.cost;
+            }
+        }
+
+        // Initialize n_threads barriers for synchronization
+        std::barrier barrier(V);
+        std::vector<std::thread> threads(n_threads);
+        int block_size = V/n_threads;
+
+        for (int block = 0; block < n_threads-1; block++) {
+            threads[block] = std::thread([this, &dist, block, block_size, &barrier]() {
+                for (int k = 0; k < V; k++) {
+                    for (int i = block*block_size; i < (block+1)*block_size; i++) {
+                        if (i == k) {continue;}
+                        for (int j = 0; j < V; j++) {
+                            if (j == k || j == i) {continue;}
+                            if (dist[i][k] != INT_MAX && dist[k][j] != INT_MAX && dist[i][j] > dist[i][k] + dist[k][j]){
+                                dist[i][j] = dist[i][k] + dist[k][j];
+                            }
+                        }
+                    }
+                    barrier.arrive_and_wait();
+                }
+            });
+        }
+        // Last block
+        threads[n_threads-1] = std::thread([this, &dist, block_size, &barrier]() {
+            for (int k = 0; k < V; k++) {
+                for (int i = (n_threads-1)*block_size; i < V; i++) {
+                    if (i == k) {continue;}
+                    for (int j = 0; j < V; j++) {
+                        if (j == k || j == i) {continue;}
+                        if (dist[i][k] != INT_MAX && dist[k][j] != INT_MAX && dist[i][j] > dist[i][k] + dist[k][j]){
+                            dist[i][j] = dist[i][k] + dist[k][j];
+                        }
+                    }
+                }
+                barrier.arrive_and_wait();
+            }
+        });
+
+        // Join threads
+        for (int i = 0; i < n_threads; i++) {threads[i].join();}
+        return AllTerminalReturn(dist);
+    }
+
     // single thread delta-stepping
     // TODO: currently the algo doesn't terminate, the loop condition is probably wrong
     // TODO: test that the output agrees with Dijkstra
@@ -395,7 +505,7 @@ public:
 
 
 int main() {
-    Graph g(7, 1);
+    Graph g(7, 1, 32);
     g.addEdge(0, 1, 1);
     g.addEdge(0, 2, 1);
     g.addEdge(1, 3, 2);

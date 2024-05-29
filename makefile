@@ -1,5 +1,5 @@
 CC = g++
-CFLAGS = -Wall -Wextra -Wpedantic -O3 -lpthread -std=c++11
+CFLAGS = -Wall -Wextra -Wpedantic -O3 -lpthread -std=c++20
 
 sequential: sequential.cpp
 	$(CC) $(CFLAGS) -o sequential sequential.cpp
