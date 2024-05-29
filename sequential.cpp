@@ -35,6 +35,17 @@ struct std::hash<Edge> {
     }
 };
 
+struct ShortestPathReturn{
+    std::vector<int> path;
+    std::vector<int> distance;
+    ShortestPathReturn(std::vector<int> path_, std::vector<int> distance_): path(path_), distance(distance_){}
+};
+
+struct AllTerminalReturn{
+    std::vector<std::vector<int>> distances;
+    AllTerminalReturn(std::vector<std::vector<int>> distances_): distances(distances_){}
+};
+
 class Graph {
     // Directed weighted graph
     const int V;
@@ -55,27 +66,38 @@ public:
     }
 
     void compare_algorithms(int s, int d, bool debug = true) {
-        std::vector<std::string> names{"DijkastraSourceAll", "DijkstraSourceTarget", "Delta", "UNWEIGHTED BFS_SourceTarget", "UNWEIGHTED BFS_AllTargets", "UNWEIGHTED DFS_SourceTarget", "UNWEIGHTED DFS_AllTargets"};
-        std::vector<void(Graph::*)(int, int)> functions {&Graph::DijkstraSourceAll, &Graph::DijkstraSourceTarget, &Graph::deltaStepping, &Graph::BFS_ST, &Graph::BFS_AT, &Graph::DFS_ST, &Graph::DFS_AT
+        std::vector<std::string> names_shortest{"DijkastraSourceAll", "DijkstraSourceTarget", "Delta", "UNWEIGHTED BFS_SourceTarget", "UNWEIGHTED BFS_AllTargets", "UNWEIGHTED DFS_SourceTarget", "UNWEIGHTED DFS_AllTargets"};
+        std::vector<ShortestPathReturn(Graph::*)(int, int)> shortest_paths {&Graph::DijkstraSourceAll, &Graph::DijkstraSourceTarget, &Graph::deltaStepping, &Graph::BFS_ST, &Graph::BFS_AT, &Graph::DFS_ST, &Graph::DFS_AT
         };
-        for (size_t i = 0; i < names.size(); i++) {
-            std::cout << "   " << names[i] << std::endl;
+        for (size_t i = 0; i < names_shortest.size(); i++) {
+            std::cout << "   " << names_shortest[i] << ": " << std::flush;
             auto start = high_resolution_clock::now();
-            ((*this).*functions[i])(s, d);
+            ShortestPathReturn r = ((*this).*shortest_paths[i])(s, d);
             auto stop = high_resolution_clock::now();
             auto duration = duration_cast<microseconds>(stop - start);
-            std::cout << (double) duration.count()/1000 << " milliseconds." << std::endl;
+            std::cout << (double) duration.count()/1000 << " milliseconds. \n\n";
+            if (debug) {
+                std::cout << "Distances: \n";
+                for (int v = 0; v < V; v++) {std::cout << v << ": " << r.distance[v] << "\n";}
+
+                if (r.distance[d] != INT_MAX){
+                    std::cout << "Path: ";
+                    for (int v : r.path) {std::cout << v << " ";}
+                } else{std::cout << "No path found.";}
+                std::cout << "\n\n";
+            }
+            std::cout << std::flush;
         }
     }
 
-    void BFS_ST(int s, int d){FS(s, d, false, true);}
-    void BFS_AT(int s, int d){FS(s, d, true, true);}
-    void DFS_ST(int s, int d){FS(s, d, false, false);}
-    void DFS_AT(int s, int d){FS(s, d, true, false);}
+    ShortestPathReturn BFS_ST(int s, int d){return FS(s, d, false, true);}
+    ShortestPathReturn BFS_AT(int s, int d){return FS(s, d, true, true);}
+    ShortestPathReturn DFS_ST(int s, int d){return FS(s, d, false, false);}
+    ShortestPathReturn DFS_AT(int s, int d){return FS(s, d, true, false);}
 
     // FS implementation (BFS, DFS, all_targets or not)
-    void FS(int s, int d, bool all_targets, bool BFS){
-        std::vector<int> path; // Path reconstruction
+    ShortestPathReturn FS(int s, int d, bool all_targets, bool BFS){
+        std::vector<int> rpath; // Path reconstruction
         std::unordered_set<int> visited; // Vertices already visited
         
         std::vector<int> prev(V, -1); // Previous vertex in path list
@@ -109,24 +131,24 @@ public:
 
         int u = d;
         while (u != -1) {
-            path.push_back(u);
+            rpath.push_back(u);
             u = prev[u];
         }
 
-        std::cout << "Distance: " << dist[d] << std::endl;
-
-        for (size_t i = 0; i < path.size(); ++i) {
-            std::cout << path[path.size() - i - 1] << " ";
+        std::vector<int> path;
+        for (size_t i = 0; i < rpath.size(); ++i) {
+            path.push_back(rpath[rpath.size() - i - 1]);
         }
-        std::cout << std::endl;
+
+        return ShortestPathReturn(path, dist);
     }
 
-    void DijkstraSourceAll(int s, int d){Dijkstra(s, d, true);}
-    void DijkstraSourceTarget(int s, int d){Dijkstra(s, d, false);}
+    ShortestPathReturn DijkstraSourceAll(int s, int d){return Dijkstra(s, d, true);}
+    ShortestPathReturn DijkstraSourceTarget(int s, int d){return Dijkstra(s, d, false);}
 
     // Dijkstra implementation for (positively) weighted graphs
-    void Dijkstra(int s, int d, bool all_targets) {
-        std::vector<int> path; // Path reconstruction
+    ShortestPathReturn Dijkstra(int s, int d, bool all_targets) {
+        std::vector<int> rpath; // Path reconstruction
         std::unordered_set<int> visited; // Vertices already visited
         std::unordered_set<int> reachable_unvisited; // Next vertices to visit (should make dijkstra faster)
         std::vector<int> dist(V); // Distance list
@@ -166,16 +188,14 @@ public:
 
         int u = d;
         while (u != -1) {
-            path.push_back(u);
+            rpath.push_back(u);
             u = prev[u];
         }
 
-        std::cout << "Distance (weighted): " << dist[d] << std::endl;
+        std::vector<int> path;
+        for (size_t i = 0; i < rpath.size(); ++i) {path.push_back(rpath[rpath.size() - i - 1]);}
 
-        for (size_t i = 0; i < path.size(); ++i) {
-            std::cout << path[path.size() - i - 1] << " ";
-        }
-        std::cout << std::endl;
+        return ShortestPathReturn(path, dist);
     }
 
     // single thread delta-stepping
@@ -185,7 +205,7 @@ public:
     // TODO: relax edges of a bucket in parallel
     // TODO: idea: order the edges by weight for a single pass instead of 2.
     // TODO: any other optimization that we can find in the data structures we use
-    void deltaStepping(int source, int destination) {
+    ShortestPathReturn deltaStepping(int source, int destination) {
         std::vector<int> dist(this->V, std::numeric_limits<int>::max());
         std::vector<int> prev(this->V, -1);
         std::unordered_map<int, std::list<int>> buckets;
@@ -234,44 +254,28 @@ public:
             }
         }
 
-        // Output distances
-        std::cout << "Vertex distances from source:" << std::endl;
-        for (int i = 0; i < this->V; ++i) {
-            std::cout << "Vertex " << i << ": " << dist[i] << std::endl;
+        // Make the return struct
+        std::vector<int> rpath;
+        for (int at = destination; at != -1; at = prev[at]) {
+            rpath.push_back(at);
         }
-
-        // Output shortest paths
-        std::cout << "\nShortest paths from source:" << std::endl;
-        for (int i = 0; i < this->V; ++i) {
-            if (i != source) {
-                std::cout << "Path to " << i << ": ";
-                if (dist[i] == std::numeric_limits<int>::max()) {
-                    std::cout << "No path" << std::endl;
-                } else {
-                    std::vector<int> path;
-                    for (int at = i; at != -1; at = prev[at]) {
-                        path.push_back(at);
-                    }
-                    for (int j = path.size() - 1; j >= 0; --j) {
-                        std::cout << path[j] << " ";
-                    }
-                    std::cout << std::endl;
-                }
-            }
-        }
+        std::vector<int> path;
+        for (size_t i = 0; i < rpath.size(); ++i) {path.push_back(rpath[rpath.size() - i - 1]);}
+        return ShortestPathReturn(path, dist);
     }
 };
 
 
 int main() {
-    Graph g(6, 1);
+    Graph g(7, 1);
     g.addEdge(0, 1, 1);
     g.addEdge(0, 2, 1);
     g.addEdge(1, 3, 2);
     g.addEdge(2, 3, 1);
     g.addEdge(3, 4, 1);
     g.addEdge(4, 5, 1);
+    g.addEdge(5, 6, 3);
 
-    g.compare_algorithms(0, 5);
+    g.compare_algorithms(0, 5, false);
     return 0;
 }
