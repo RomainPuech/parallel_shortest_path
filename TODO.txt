@@ -1,0 +1,14 @@
+	**TODO CODE:**
+Delta stepping parallèle
+Parallel Floyd Warshall
+Parallel S-T to all-pairs
+Min-cut weird thing
+BFS / DFS
+Passer les résultats sur un .txt
+Analyser les résultats sur python avec des graphes et tout
+
+
+	**TODO RAPPORT:**
+
+oui
+Dans le rapport on peut faire un tableau qui dit quel algo fait quoi (genre negative weights, negative cycles, source-target, source-all, all pairs, ...)
