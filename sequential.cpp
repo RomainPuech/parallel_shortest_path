@@ -18,10 +18,12 @@ using namespace std::chrono;
 #pragma GCC diagnostic ignored "-Wvla"
 
 struct Edge{
+    int from;
     int vertex;
     int cost;
     Edge(int vertex_, int cost_) {vertex = vertex_; cost = cost_;}
-    bool operator==(const Edge &other) const {return vertex == other.vertex && cost == other.cost;}
+    Edge(int from_, int vertex_, int cost_) {from = from_; vertex = vertex_; cost = cost_;}
+    bool operator==(const Edge &other) const {return from == other.from && vertex == other.vertex && cost == other.cost;}
 };
 
 // Define a hash function
@@ -29,9 +31,10 @@ template <>
 struct std::hash<Edge> {
     std::size_t operator()(const Edge &e) const {
         // Combine the hashes of the individual members
+        std::size_t h0 = std::hash<int>()(e.from);
         std::size_t h1 = std::hash<int>()(e.vertex);
         std::size_t h2 = std::hash<int>()(e.cost);
-        return h1 ^ (h2 << 1);
+        return h0 ^ (h1 << 1) ^ (h2 << 2);
     }
 };
 
@@ -106,7 +109,7 @@ public:
     
     void addEdge(int v, int w, int c) {
         if (v < V && w < V) {
-            adj[v].insert(Edge(w, c));
+            adj[v].insert(Edge(v, w, c));
         } else {
             throw "Invalid vertex";
         }
@@ -323,22 +326,25 @@ public:
         std::vector<int> dist(this->V, std::numeric_limits<int>::max());
         std::vector<int> prev(this->V, -1);
         std::unordered_map<int, std::list<int>> buckets;
-        std::set<int> unvisited;
+        
 
         dist[source] = 0;
         buckets[0].push_back(source);
 
-        for (int i = 0; !buckets.empty(); ++i) {
-            if (buckets.find(i) == buckets.end()) continue;
+        while(!buckets.empty()) {
+            int i=0;
+            while(buckets.find(i)==buckets.end()) {
+                ++i;
+            }
 
             std::list<int> bucket = buckets[i];
             buckets.erase(i);
+            std::list<Edge> heavy_edges;
 
             // Process light edges
             while (!bucket.empty()) {
                 int u = bucket.front();
                 bucket.pop_front();
-
                 for (const Edge e : adj[u]) {
                     if (e.cost <= delta) {
                         int new_dist = dist[u] + e.cost;
@@ -346,23 +352,31 @@ public:
                             dist[e.vertex] = new_dist;
                             prev[e.vertex] = u;
                             int bucket_index = new_dist / delta;
-                            buckets[bucket_index].push_back(e.vertex);
+                            if(bucket_index == i){
+                                bucket.push_back(e.vertex);//should remove it from old bucket as well...
+                            }
+                            else if(buckets.find(bucket_index) == buckets.end()) {
+                                buckets[bucket_index] = std::list<int>({e.vertex});
+                            } else {
+                                buckets[bucket_index].push_back(e.vertex);
+                            }
                         }
+                    }else{
+                        heavy_edges.push_back(e);
                     }
                 }
             }
-
             // Process heavy edges
-            for (int u : bucket) {
-                for (const Edge e : adj[u]) {
-                    if (e.cost > delta) {
-                        int new_dist = dist[u] + e.cost;
-                        if (new_dist < dist[e.vertex]) {
-                            dist[e.vertex] = new_dist;
-                            prev[e.vertex] = u;
-                            int bucket_index = new_dist / delta;
-                            buckets[bucket_index].push_back(e.vertex);
-                        }
+            for (const Edge e : heavy_edges) {
+                int new_dist = dist[e.from] + e.cost;
+                if (new_dist < dist[e.vertex]) {
+                    dist[e.vertex] = new_dist;
+                    prev[e.vertex] = e.from;
+                    int bucket_index = new_dist / delta;
+                    if(buckets.find(bucket_index) == buckets.end()) {
+                        buckets[bucket_index] = std::list<int>({e.vertex});
+                    } else {
+                        buckets[bucket_index].push_back(e.vertex);
                     }
                 }
             }
