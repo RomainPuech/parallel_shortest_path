@@ -54,12 +54,9 @@ public:
         }
     }
 
-    void compare_algorithms(int s, int d) {
-        std::vector<std::string> names{"DijkastraSourceAll", "DijkstraSourceTarget", "Delta"};
-        std::vector<void(Graph::*)(int, int)> functions {
-            &Graph::DijkstraSourceAll,
-            &Graph::DijkstraSourceTarget,
-            &Graph::deltaStepping
+    void compare_algorithms(int s, int d, bool debug = true) {
+        std::vector<std::string> names{"DijkastraSourceAll", "DijkstraSourceTarget", "Delta", "UNWEIGHTED BFS_SourceTarget", "UNWEIGHTED BFS_AllTargets", "UNWEIGHTED DFS_SourceTarget", "UNWEIGHTED DFS_AllTargets"};
+        std::vector<void(Graph::*)(int, int)> functions {&Graph::DijkstraSourceAll, &Graph::DijkstraSourceTarget, &Graph::deltaStepping, &Graph::BFS_ST, &Graph::BFS_AT, &Graph::DFS_ST, &Graph::DFS_AT
         };
         for (size_t i = 0; i < names.size(); i++) {
             std::cout << "   " << names[i] << std::endl;
@@ -69,6 +66,59 @@ public:
             auto duration = duration_cast<microseconds>(stop - start);
             std::cout << (double) duration.count()/1000 << " milliseconds." << std::endl;
         }
+    }
+
+    void BFS_ST(int s, int d){FS(s, d, false, true);}
+    void BFS_AT(int s, int d){FS(s, d, true, true);}
+    void DFS_ST(int s, int d){FS(s, d, false, false);}
+    void DFS_AT(int s, int d){FS(s, d, true, false);}
+
+    // FS implementation (BFS, DFS, all_targets or not)
+    void FS(int s, int d, bool all_targets, bool BFS){
+        std::vector<int> path; // Path reconstruction
+        std::unordered_set<int> visited; // Vertices already visited
+        
+        std::vector<int> prev(V, -1); // Previous vertex in path list
+        std::vector<int> dist(V, INT_MAX); // Distance list
+
+        for (int i = 0; i < V; i++) {prev[i] = -1;}
+
+        std::queue<int> queue;
+        std::vector<int> pile;
+        if (BFS){queue.push(s);}
+        else{pile.push_back(s);}
+        visited.insert(s);
+        dist[s] = 0;
+
+        while ((BFS && !queue.empty()) || (!BFS && !pile.empty())) {
+            int act;
+            if (BFS){act = queue.front();queue.pop();}
+            else{act = pile.back();pile.pop_back();}
+
+            if (!all_targets && act == d) {break;}
+            for (const Edge e : adj[act]){
+                if (visited.find(e.vertex) == visited.end()){
+                    if (BFS){queue.push(e.vertex);}
+                    else{pile.push_back(e.vertex);}
+                    visited.insert(e.vertex);
+                    prev[e.vertex] = act;
+                    dist[e.vertex] = dist[act] + 1;
+                }
+            }
+        }
+
+        int u = d;
+        while (u != -1) {
+            path.push_back(u);
+            u = prev[u];
+        }
+
+        std::cout << "Distance: " << dist[d] << std::endl;
+
+        for (size_t i = 0; i < path.size(); ++i) {
+            std::cout << path[path.size() - i - 1] << " ";
+        }
+        std::cout << std::endl;
     }
 
     void DijkstraSourceAll(int s, int d){Dijkstra(s, d, true);}
