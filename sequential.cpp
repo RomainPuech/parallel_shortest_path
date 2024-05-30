@@ -29,13 +29,12 @@ struct Edge {
     vertex = vertex_;
     cost = cost_;
   }
-  bool operator==(const Edge &other) const {
-    return from == other.from && vertex == other.vertex && cost == other.cost;
-  }
+  bool operator==(const Edge &other) const { return from == other.from && vertex == other.vertex && cost == other.cost; }
 };
 
 // Define a hash function
-template <> struct std::hash<Edge> {
+template <>
+struct std::hash<Edge> {
   std::size_t operator()(const Edge &e) const {
     // Combine the hashes of the individual members
     std::size_t h0 = std::hash<int>()(e.from);
@@ -48,8 +47,7 @@ template <> struct std::hash<Edge> {
 struct SourceTargetReturn {
   std::vector<int> path;
   std::vector<int> distance;
-  SourceTargetReturn(std::vector<int> path_, std::vector<int> distance_)
-      : path(path_), distance(distance_) {}
+  SourceTargetReturn(std::vector<int> path_, std::vector<int> distance_) : path(path_), distance(distance_) {}
 };
 
 struct SourceAllReturn {
@@ -59,8 +57,7 @@ struct SourceAllReturn {
 
 struct AllTerminalReturn {
   std::vector<std::vector<int>> distances;
-  AllTerminalReturn(std::vector<std::vector<int>> distances_)
-      : distances(distances_) {}
+  AllTerminalReturn(std::vector<std::vector<int>> distances_) : distances(distances_) {}
 };
 
 int n_digits(int n) {
@@ -95,8 +92,7 @@ void printDistMatrix(std::vector<std::vector<int>> distances, int V) {
   for (int X = 0; X < V + 1; X++) {
     max_dist[X] = n_digits(max_dist[X]) + 1;
   }
-  // max_dist[i] is now the maximum number of digits in the i-th column (0 is
-  // index)
+  // max_dist[i] is now the maximum number of digits in the i-th column (0 is index)
 
   std::cout << "Distances: \n";
   for (int X = 0; X < V + 1; X++) {
@@ -120,7 +116,8 @@ void printDistMatrix(std::vector<std::vector<int>> distances, int V) {
     }
     std::cout << "\n";
   }
-  std::cout << "\n\n" << std::flush;
+  std::cout << "\n\n"
+            << std::flush;
 }
 
 class Graph {
@@ -145,12 +142,8 @@ public:
   }
 
   void compare_algorithms(int s, int d, bool debug = true) {
-    std::vector<std::string> names_ST{"DijkstraSourceTarget", "Delta",
-                                      "UNWEIGHTED BFS_SourceTarget",
-                                      "UNWEIGHTED DFS_SourceTarget"};
-    std::vector<SourceTargetReturn (Graph::*)(int, int)> ST_Funcs{
-        &Graph::DijkstraSourceTarget, &Graph::parallelDeltaStepping,
-        &Graph::BFS_ST, &Graph::DFS_ST};
+    std::vector<std::string> names_ST{"DijkstraSourceTarget", "Delta", "UNWEIGHTED BFS_SourceTarget", "UNWEIGHTED DFS_SourceTarget"};
+    std::vector<SourceTargetReturn (Graph::*)(int, int)> ST_Funcs{&Graph::DijkstraSourceTarget, &Graph::parallelDeltaStepping, &Graph::BFS_ST, &Graph::DFS_ST};
     for (size_t i = 0; i < names_ST.size(); i++) {
       std::cout << "   " << names_ST[i] << ": " << std::flush;
       auto start = high_resolution_clock::now();
@@ -177,13 +170,9 @@ public:
       std::cout << std::flush;
     }
 
-    // Define similar things for all terminal from the source-all terminal
-    // problem
-    std::vector<std::string> names_SA{"DijkastraSourceAll",
-                                      "UNWEIGHTED BFS_SourceAll",
-                                      "UNWEIGHTED DFS_SourceAll"};
-    std::vector<SourceAllReturn (Graph::*)(int, int)> SA_Funcs{
-        &Graph::DijkstraSourceAll, &Graph::BFS_AT, &Graph::DFS_AT};
+    // Define similar things for all terminal from the source-all terminal problem
+    std::vector<std::string> names_SA{"DijkastraSourceAll", "UNWEIGHTED BFS_SourceAll", "UNWEIGHTED DFS_SourceAll"};
+    std::vector<SourceAllReturn (Graph::*)(int, int)> SA_Funcs{&Graph::DijkstraSourceAll, &Graph::BFS_AT, &Graph::DFS_AT};
     for (size_t i = 0; i < names_SA.size(); i++) {
       std::cout << "   " << names_SA[i] << ": " << std::flush;
       auto start = high_resolution_clock::now();
@@ -203,8 +192,7 @@ public:
 
     // Generate All-Terminal from Source-All-Terminal (SEQUENTIAL)
     for (size_t i = 0; i < names_SA.size(); i++) {
-      std::cout << "   Sequential All-Terminal " << names_SA[i] << ": "
-                << std::flush;
+      std::cout << "   Sequential All-Terminal " << names_SA[i] << ": " << std::flush;
       auto start = high_resolution_clock::now();
       AllTerminalReturn r = SourceAll_To_AllTerminal(SA_Funcs[i]);
       auto stop = high_resolution_clock::now();
@@ -218,8 +206,7 @@ public:
 
     // Generate All-Terminal from Source-All-Terminal (PARALLEL)
     for (size_t i = 0; i < names_SA.size(); i++) {
-      std::cout << "   Parallel All-Terminal " << names_SA[i] << ": "
-                << std::flush;
+      std::cout << "   Parallel All-Terminal " << names_SA[i] << ": " << std::flush;
       auto start = high_resolution_clock::now();
       AllTerminalReturn r = SourceAll_To_AllTerminalParallel(SA_Funcs[i]);
       auto stop = high_resolution_clock::now();
@@ -232,10 +219,8 @@ public:
     }
 
     // Do All-Terminal algorithms
-    std::vector<std::string> names_AT{"Floyd_Warshall_Sequential",
-                                      "Floyd_Warshall_Parallel"};
-    std::vector<AllTerminalReturn (Graph::*)()> AT_Funcs{
-        &Graph::Floyd_Warshall_Sequential, &Graph::Floyd_Warshall_Parallel};
+    std::vector<std::string> names_AT{"Floyd_Warshall_Sequential", "Floyd_Warshall_Parallel"};
+    std::vector<AllTerminalReturn (Graph::*)()> AT_Funcs{&Graph::Floyd_Warshall_Sequential, &Graph::Floyd_Warshall_Parallel};
     for (size_t i = 0; i < names_AT.size(); i++) {
       std::cout << "   " << names_AT[i] << ": " << std::flush;
       auto start = high_resolution_clock::now();
@@ -250,8 +235,7 @@ public:
     }
   }
 
-  AllTerminalReturn SourceAll_To_AllTerminal(SourceAllReturn (Graph::*F)(int,
-                                                                         int)) {
+  AllTerminalReturn SourceAll_To_AllTerminal(SourceAllReturn (Graph::*F)(int, int)) {
     std::vector<std::vector<int>> distances;
     for (int i = 0; i < V; i++) {
       SourceAllReturn r = ((*this).*F)(i, i); // could do i, -1 too
@@ -260,8 +244,7 @@ public:
     return AllTerminalReturn(distances);
   }
 
-  AllTerminalReturn
-  SourceAll_To_AllTerminalParallel(SourceAllReturn (Graph::*F)(int, int)) {
+  AllTerminalReturn SourceAll_To_AllTerminalParallel(SourceAllReturn (Graph::*F)(int, int)) {
     std::vector<std::vector<int>> distances(V);
     std::vector<std::thread> threads(n_threads);
     int block_size = V / n_threads;
@@ -286,13 +269,9 @@ public:
   }
 
   SourceTargetReturn BFS_ST(int s, int d) { return FS(s, d, false, true); }
-  SourceAllReturn BFS_AT(int s, int d) {
-    return SourceAllReturn(FS(s, d, true, true).distance);
-  }
+  SourceAllReturn BFS_AT(int s, int d) { return SourceAllReturn(FS(s, d, true, true).distance); }
   SourceTargetReturn DFS_ST(int s, int d) { return FS(s, d, false, false); }
-  SourceAllReturn DFS_AT(int s, int d) {
-    return SourceAllReturn(FS(s, d, true, false).distance);
-  }
+  SourceAllReturn DFS_AT(int s, int d) { return SourceAllReturn(FS(s, d, true, false).distance); }
 
   // FS implementation (BFS, DFS, all_targets or not)
   SourceTargetReturn FS(int s, int d, bool all_targets, bool BFS) {
@@ -357,22 +336,16 @@ public:
     return SourceTargetReturn(path, dist);
   }
 
-  SourceAllReturn DijkstraSourceAll(int s, int d) {
-    return SourceAllReturn(Dijkstra(s, d, true).distance);
-  }
-  SourceTargetReturn DijkstraSourceTarget(int s, int d) {
-    return Dijkstra(s, d, false);
-  }
+  SourceAllReturn DijkstraSourceAll(int s, int d) { return SourceAllReturn(Dijkstra(s, d, true).distance); }
+  SourceTargetReturn DijkstraSourceTarget(int s, int d) { return Dijkstra(s, d, false); }
 
   // Dijkstra implementation for (positively) weighted graphs
   SourceTargetReturn Dijkstra(int s, int d, bool all_targets) {
-    std::vector<int> rpath;          // Path reconstruction
-    std::unordered_set<int> visited; // Vertices already visited
-    std::unordered_set<int>
-        reachable_unvisited;  // Next vertices to visit (should make dijkstra
-                              // faster)
-    std::vector<int> dist(V); // Distance list
-    std::vector<int> prev(V); // Previous vertex in path list
+    std::vector<int> rpath;                      // Path reconstruction
+    std::unordered_set<int> visited;             // Vertices already visited
+    std::unordered_set<int> reachable_unvisited; // Next vertices to visit (should make dijkstra faster)
+    std::vector<int> dist(V);                    // Distance list
+    std::vector<int> prev(V);                    // Previous vertex in path list
 
     for (int i = 0; i < V; i++) {
       dist[i] = INT_MAX;
@@ -381,8 +354,7 @@ public:
 
     dist[s] = 0;
     reachable_unvisited.insert(s);
-    while ((dist[d] == INT_MAX || all_targets) &&
-           !reachable_unvisited.empty()) {
+    while ((dist[d] == INT_MAX || all_targets) && !reachable_unvisited.empty()) {
       // Pick closest element in reachables
       int mindist = INT_MAX;
       int minvert = -1;
@@ -442,8 +414,7 @@ public:
     for (int k = 0; k < V; k++) {
       for (int i = 0; i < V; i++) {
         for (int j = 0; j < V; j++) {
-          if (dist[i][k] != INT_MAX && dist[k][j] != INT_MAX &&
-              dist[i][j] > dist[i][k] + dist[k][j]) {
+          if (dist[i][k] != INT_MAX && dist[k][j] != INT_MAX && dist[i][j] > dist[i][k] + dist[k][j]) {
             dist[i][j] = dist[i][k] + dist[k][j];
           }
         }
@@ -473,8 +444,7 @@ public:
     int block_size = V / n_threads;
 
     for (int block = 0; block < n_threads - 1; block++) {
-      threads[block] = std::thread([this, &dist, block, block_size,
-                                    &barrier]() {
+      threads[block] = std::thread([this, &dist, block, block_size, &barrier]() {
         for (int k = 0; k < V; k++) {
           for (int i = block * block_size; i < (block + 1) * block_size; i++) {
             if (i == k) {
@@ -484,8 +454,7 @@ public:
               if (j == k || j == i) {
                 continue;
               }
-              if (dist[i][k] != INT_MAX && dist[k][j] != INT_MAX &&
-                  dist[i][j] > dist[i][k] + dist[k][j]) {
+              if (dist[i][k] != INT_MAX && dist[k][j] != INT_MAX && dist[i][j] > dist[i][k] + dist[k][j]) {
                 dist[i][j] = dist[i][k] + dist[k][j];
               }
             }
@@ -505,8 +474,7 @@ public:
             if (j == k || j == i) {
               continue;
             }
-            if (dist[i][k] != INT_MAX && dist[k][j] != INT_MAX &&
-                dist[i][j] > dist[i][k] + dist[k][j]) {
+            if (dist[i][k] != INT_MAX && dist[k][j] != INT_MAX && dist[i][j] > dist[i][k] + dist[k][j]) {
               dist[i][j] = dist[i][k] + dist[k][j];
             }
           }
@@ -555,8 +523,7 @@ public:
               prev[e.vertex] = u;
               int bucket_index = new_dist / delta;
               if (bucket_index == i) {
-                bucket.push_back(
-                    e.vertex); // should remove it from old bucket as well...
+                bucket.push_back(e.vertex); // should remove it from old bucket as well...
               } else if (buckets.find(bucket_index) == buckets.end()) {
                 buckets[bucket_index] = std::list<int>({e.vertex});
               } else {
@@ -600,8 +567,10 @@ public:
 
   // helper functions
   void relaxThread(std::unordered_map<int, std::list<int>> &buckets,
-                   std::vector<int> &dist, std::vector<int> &prev,
-                   Edge *start_edge, Edge *end_edge) {
+                   std::vector<int> &dist,
+                   std::vector<int> &prev,
+                   Edge *start_edge,
+                   Edge *end_edge) {
     while (start_edge != end_edge) {
       Edge e = *start_edge;
       int new_dist = dist[e.from] + e.cost;
@@ -620,24 +589,21 @@ public:
   }
   // TODOs:
   // 1. erase the edge from the bucket it was in
-  // 2. think about compatibility of the data structures we use (for buckets,
-  // dist and prev) with parallelism
+  // 2. think about compatibility of the data structures we use (for buckets, dist and prev) with parallelism
   // 3. adapt for light edges
   void parallelRelax(std::unordered_map<int, std::list<int>> &buckets,
-                     std::vector<int> &dist, std::vector<int> &prev,
-                     std::vector<Edge> &edges, int n_threads) {
+                     std::vector<int> &dist,
+                     std::vector<int> &prev,
+                     std::vector<Edge> &edges,
+                     int n_threads) {
     std::vector<std::thread> threads(n_threads);
     int block_size = edges.size() / n_threads;
     Edge *start_edge = &edges[0];
     for (int i = 0; i < n_threads - 1; i++) {
-      threads[i] = std::thread(&Graph::relaxThread, this, std::ref(buckets),
-                               std::ref(dist), std::ref(prev), start_edge,
-                               start_edge + block_size);
+      threads[i] = std::thread(&Graph::relaxThread, this, std::ref(buckets), std::ref(dist), std::ref(prev), start_edge, start_edge + block_size);
       start_edge += block_size;
     }
-    threads[n_threads - 1] = std::thread(
-        &Graph::relaxThread, this, std::ref(buckets), std::ref(dist),
-        std::ref(prev), start_edge, &edges[edges.size()]);
+    threads[n_threads - 1] = std::thread(&Graph::relaxThread, this, std::ref(buckets), std::ref(dist), std::ref(prev), start_edge, &edges[edges.size()]);
     for (int i = 0; i < n_threads; i++) {
       threads[i].join();
     }
@@ -674,8 +640,7 @@ public:
               prev[e.vertex] = u;
               int bucket_index = new_dist / delta;
               if (bucket_index == i) {
-                bucket.push_back(
-                    e.vertex); // should remove it from old bucket as well...
+                bucket.push_back(e.vertex); // should remove it from old bucket as well...
               } else if (buckets.find(bucket_index) == buckets.end()) {
                 buckets[bucket_index] = std::list<int>({e.vertex});
               } else {
