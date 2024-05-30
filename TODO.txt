@@ -1,9 +1,6 @@
 	**TODO CODE:**
 Delta stepping parallèle
 
-Parallel Floyd Warshall
-Min-cut weird thing
-
 Passer les résultats sur un .txt
 Analyser les résultats sur python avec des graphes et tout
 
