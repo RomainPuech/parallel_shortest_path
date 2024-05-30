@@ -120,7 +120,7 @@ public:
 
     void compare_algorithms(int s, int d, bool debug = true) {
         std::vector<std::string> names_ST{"DijkstraSourceTarget", "Delta", "UNWEIGHTED BFS_SourceTarget", "UNWEIGHTED DFS_SourceTarget"};
-        std::vector<SourceTargetReturn(Graph::*)(int, int)> ST_Funcs {&Graph::DijkstraSourceTarget, &Graph::deltaStepping, &Graph::BFS_ST, &Graph::DFS_ST};
+        std::vector<SourceTargetReturn(Graph::*)(int, int)> ST_Funcs {&Graph::DijkstraSourceTarget, &Graph::parallelDeltaStepping, &Graph::BFS_ST, &Graph::DFS_ST};
         for (size_t i = 0; i < names_ST.size(); i++) {
             std::cout << "   " << names_ST[i] << ": " << std::flush;
             auto start = high_resolution_clock::now();
@@ -426,11 +426,7 @@ public:
     }
 
     // single thread delta-stepping
-    // TODO: currently the algo doesn't terminate, the loop condition is probably wrong
-    // TODO: test that the output agrees with Dijkstra
-    // TODO: destination is not used
     // TODO: relax edges of a bucket in parallel
-    // TODO: idea: order the edges by weight for a single pass instead of 2.
     // TODO: any other optimization that we can find in the data structures we use
     SourceTargetReturn deltaStepping(int source, int destination) {
         std::vector<int> dist(this->V, std::numeric_limits<int>::max());
@@ -501,11 +497,115 @@ public:
         for (size_t i = 0; i < rpath.size(); ++i) {path.push_back(rpath[rpath.size() - i - 1]);}
         return SourceTargetReturn(path, dist);
     }
+
+    ////// parallel delta-stepping
+
+    // helper functions
+    void relaxThread(std::unordered_map<int, std::list<int>> &buckets,
+    std::vector<int> &dist, 
+    std::vector<int> &prev,
+    Edge* start_edge,
+    Edge* end_edge,
+    bool heavy){
+        while(start_edge!=end_edge) {
+            Edge e = *start_edge;
+            int new_dist = dist[e.from] + e.cost;
+            if (new_dist < dist[e.vertex]) {
+                dist[e.vertex] = new_dist;
+                prev[e.vertex] = e.from;
+                int bucket_index = new_dist / delta;
+                if(buckets.find(bucket_index) == buckets.end()) {
+                    buckets[bucket_index] = std::list<int>({e.vertex});
+                } else {
+                    buckets[bucket_index].push_back(e.vertex);
+                }
+            }
+            start_edge++;
+        }
+    }
+
+    void parallelRelax(std::unordered_map<int, std::list<int>> &buckets,
+    std::vector<int> &dist,
+    std::vector<int> &prev,
+    std::vector<Edge> &edges,
+    bool heavy,
+    int n_threads){
+        std::vector<std::thread> threads(n_threads);
+        int block_size = edges.size()/n_threads;
+        Edge* start_edge = &edges[0];
+        for (int i = 0; i < n_threads-1; i++) {
+            threads[i] = std::thread(&Graph::relaxThread, this, std::ref(buckets), std::ref(dist), std::ref(prev), start_edge, start_edge+block_size, heavy);
+            start_edge += block_size;
+        }
+        threads[n_threads-1] = std::thread(&Graph::relaxThread, this, std::ref(buckets), std::ref(dist), std::ref(prev), start_edge, &edges[edges.size()], heavy);
+        for (int i = 0; i < n_threads; i++) {threads[i].join();}
+    }
+
+
+    SourceTargetReturn parallelDeltaStepping(int source, int destination) {
+        std::vector<int> dist(this->V, std::numeric_limits<int>::max());
+        std::vector<int> prev(this->V, -1);
+        std::unordered_map<int, std::list<int>> buckets;
+        
+
+        dist[source] = 0;
+        buckets[0].push_back(source);
+
+        while(!buckets.empty()) {
+            int i=0;
+            while(buckets.find(i)==buckets.end()) {
+                ++i;
+            }
+
+            std::list<int> bucket = buckets[i];
+            buckets.erase(i);
+            std::vector<Edge> heavy_edges;
+
+            // Process light edges
+            while (!bucket.empty()) {
+                // parallelize this loop
+                int u = bucket.front();
+                bucket.pop_front();
+                for (const Edge e : adj[u]) {
+                    if (e.cost <= delta) {
+                        int new_dist = dist[u] + e.cost;
+                        if (new_dist < dist[e.vertex]) {
+                            dist[e.vertex] = new_dist;
+                            prev[e.vertex] = u;
+                            int bucket_index = new_dist / delta;
+                            if(bucket_index == i){
+                                bucket.push_back(e.vertex);//should remove it from old bucket as well...
+                            }
+                            else if(buckets.find(bucket_index) == buckets.end()) {
+                                buckets[bucket_index] = std::list<int>({e.vertex});
+                            } else {
+                                buckets[bucket_index].push_back(e.vertex);
+                            }
+                        }
+                    }else{
+                        heavy_edges.push_back(e);
+                    }
+                }
+            }
+            // Process heavy edges
+            parallelRelax(buckets, dist, prev, heavy_edges, true, n_threads);
+        }
+
+        // Make the return struct
+        std::vector<int> rpath;
+        for (int at = destination; at != -1; at = prev[at]) {
+            rpath.push_back(at);
+        }
+        std::vector<int> path;
+        for (size_t i = 0; i < rpath.size(); ++i) {path.push_back(rpath[rpath.size() - i - 1]);}
+        return SourceTargetReturn(path, dist);
+    }
 };
 
 
+
 int main() {
-    Graph g(7, 1, 32);
+    Graph g(7, 2, 32);
     g.addEdge(0, 1, 1);
     g.addEdge(0, 2, 1);
     g.addEdge(1, 3, 2);
