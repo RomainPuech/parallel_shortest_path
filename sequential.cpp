@@ -505,8 +505,7 @@ public:
     std::vector<int> &dist, 
     std::vector<int> &prev,
     Edge* start_edge,
-    Edge* end_edge,
-    bool heavy){
+    Edge* end_edge){
         while(start_edge!=end_edge) {
             Edge e = *start_edge;
             int new_dist = dist[e.from] + e.cost;
@@ -523,21 +522,23 @@ public:
             start_edge++;
         }
     }
-
+    // TODOs:
+    // 1. erase the edge from the bucket it was in
+    // 2. think about compatibility of the data structures we use (for buckets, dist and prev) with parallelism
+    // 3. adapt for light edges
     void parallelRelax(std::unordered_map<int, std::list<int>> &buckets,
     std::vector<int> &dist,
     std::vector<int> &prev,
     std::vector<Edge> &edges,
-    bool heavy,
     int n_threads){
         std::vector<std::thread> threads(n_threads);
         int block_size = edges.size()/n_threads;
         Edge* start_edge = &edges[0];
         for (int i = 0; i < n_threads-1; i++) {
-            threads[i] = std::thread(&Graph::relaxThread, this, std::ref(buckets), std::ref(dist), std::ref(prev), start_edge, start_edge+block_size, heavy);
+            threads[i] = std::thread(&Graph::relaxThread, this, std::ref(buckets), std::ref(dist), std::ref(prev), start_edge, start_edge+block_size);
             start_edge += block_size;
         }
-        threads[n_threads-1] = std::thread(&Graph::relaxThread, this, std::ref(buckets), std::ref(dist), std::ref(prev), start_edge, &edges[edges.size()], heavy);
+        threads[n_threads-1] = std::thread(&Graph::relaxThread, this, std::ref(buckets), std::ref(dist), std::ref(prev), start_edge, &edges[edges.size()]);
         for (int i = 0; i < n_threads; i++) {threads[i].join();}
     }
 
@@ -588,7 +589,7 @@ public:
                 }
             }
             // Process heavy edges
-            parallelRelax(buckets, dist, prev, heavy_edges, true, n_threads);
+            parallelRelax(buckets, dist, prev, heavy_edges, true);
         }
 
         // Make the return struct
