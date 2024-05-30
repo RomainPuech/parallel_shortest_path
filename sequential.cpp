@@ -12,6 +12,7 @@ using namespace std::chrono;
 
 #include <barrier>
 #include <mutex>
+#include <random>
 #include <thread>
 
 #pragma GCC diagnostic ignored "-Wvla"
@@ -47,22 +48,47 @@ struct std::hash<Edge> {
 struct SourceTargetReturn {
   std::vector<int> path;
   std::vector<int> distance;
-  SourceTargetReturn(std::vector<int> path_, std::vector<int> distance_) : path(path_), distance(distance_) {}
+  SourceTargetReturn(std::vector<int> path_, std::vector<int> distance_) : path(path_), distance(distance_) {
+    // Set to -1 all unreachable nodes
+    for (size_t i = 0; i < distance.size(); i++) {
+      if (distance[i] == INT_MAX) {
+        distance[i] = -1;
+      }
+    }
+  }
 };
 
 struct SourceAllReturn {
   std::vector<int> distances;
-  SourceAllReturn(std::vector<int> distances_) : distances(distances_) {}
+  SourceAllReturn(std::vector<int> distances_) : distances(distances_) {
+    // Set to -1 all unreachable nodes
+    for (size_t i = 0; i < distances.size(); i++) {
+      if (distances[i] == INT_MAX) {
+        distances[i] = -1;
+      }
+    }
+  }
 };
 
 struct AllTerminalReturn {
   std::vector<std::vector<int>> distances;
-  AllTerminalReturn(std::vector<std::vector<int>> distances_) : distances(distances_) {}
+  AllTerminalReturn(std::vector<std::vector<int>> distances_) : distances(distances_) {
+    // Set to -1 all unreachable nodes
+    for (size_t i = 0; i < distances.size(); i++) {
+      for (size_t j = 0; j < distances[i].size(); j++) {
+        if (distances[i][j] == INT_MAX) {
+          distances[i][j] = -1;
+        }
+      }
+    }
+  }
 };
 
 int n_digits(int n) {
   if (n == 0) {
     return 1;
+  } else if (n == -1) {
+    return 2;
   }
   int digits = 0;
   while (n) {
@@ -85,7 +111,10 @@ void printDistMatrix(std::vector<std::vector<int>> distances, int V) {
   for (int X = 0; X < V; X++) {
     max_dist[X] = std::max(max_dist[X], X);
     for (int Y = 0; Y < V; Y++) {
-      max_dist[Y + 1] = std::max(max_dist[Y], distances[X][Y]);
+      max_dist[Y + 1] = std::max(max_dist[Y + 1], distances[X][Y]);
+      if (distances[X][Y] == -1) {
+        max_dist[Y + 1] = std::max(max_dist[Y + 1], 10);
+      }
     }
   }
   max_dist[0] = V - 1;
@@ -134,11 +163,54 @@ public:
   }
 
   void addEdge(int v, int w, int c) {
-    if (v < V && w < V) {
+    if (v < V && w < V && c >= 0) {
       adj[v].insert(Edge(v, w, c));
     } else {
       throw "Invalid vertex";
     }
+  }
+
+  static Graph generate_graph_parallel(int n_vertices, double edge_density, int max_cost, int n_threads, int delt) {
+    Graph g(n_vertices, delt, n_threads);
+    std::vector<std::thread> threads(n_threads - 1);
+    int block_size = n_vertices / n_threads;
+    int n_edges = n_vertices * (n_vertices - 1) * edge_density;
+    for (int i = 0; i < n_threads - 1; i++) {
+      threads[i] = std::thread([&g, i, block_size, n_vertices, edge_density, max_cost]() {
+        std::hash<std::thread::id> hasher;
+        static thread_local std::mt19937 generator = std::mt19937(clock() + hasher(std::this_thread::get_id()));
+        std::uniform_real_distribution<double> distribution(0.0, 1.0);
+        for (int it = i * block_size; it < (i + 1) * block_size; it++) {
+          for (int j = 0; j < n_vertices; j++) {
+            if (it != j && distribution(generator) < edge_density) {
+              g.addEdge(it, j, (int)(distribution(generator) * max_cost));
+            }
+          }
+        }
+      });
+    }
+    std::hash<std::thread::id> hasher;
+    static thread_local std::mt19937 generator = std::mt19937(clock() + hasher(std::this_thread::get_id()));
+    std::uniform_real_distribution<double> distribution(0.0, 1.0);
+    for (int it = (n_threads - 1) * block_size; it < n_vertices; it++) {
+      for (int j = 0; j < n_vertices; j++) {
+        if (it != j && distribution(generator) < edge_density) {
+          g.addEdge(it, j, (int)(distribution(generator) * max_cost));
+        }
+      }
+    }
+    for (int i = 0; i < n_threads - 1; i++) {
+      threads[i].join();
+    }
+    // make matrix out of adjacency of g
+    std::vector<std::vector<int>> dist(n_vertices, std::vector<int>(n_vertices, -1));
+    for (int i = 0; i < n_vertices; i++) {
+      for (const Edge e : g.adj[i]) {
+        dist[i][e.vertex] = e.cost;
+      }
+      std::cout << "\n";
+    }
+    return g;
   }
 
   void compare_algorithms(int s, int d, bool debug = true) {
@@ -171,7 +243,7 @@ public:
     }
 
     // Define similar things for all terminal from the source-all terminal problem
-    std::vector<std::string> names_SA{"DijkastraSourceAll", "UNWEIGHTED BFS_SourceAll", "UNWEIGHTED DFS_SourceAll"};
+    std::vector<std::string> names_SA{"DijkstraSourceAll", "UNWEIGHTED BFS_SourceAll", "UNWEIGHTED DFS_SourceAll"};
     std::vector<SourceAllReturn (Graph::*)(int, int)> SA_Funcs{&Graph::DijkstraSourceAll, &Graph::BFS_AT, &Graph::DFS_AT};
     for (size_t i = 0; i < names_SA.size(); i++) {
       std::cout << "   " << names_SA[i] << ": " << std::flush;
@@ -256,13 +328,11 @@ public:
         }
       });
     }
-    threads[n_threads - 1] = std::thread([this, &distances, F, block_size]() {
-      for (int it = (n_threads - 1) * block_size; it < V; it++) {
-        SourceAllReturn r = ((*this).*F)(it, it); // could do it, -1 too
-        distances[it] = r.distances;
-      }
-    });
-    for (int i = 0; i < V; i++) {
+    for (int it = (n_threads - 1) * block_size; it < V; it++) {
+      SourceAllReturn r = ((*this).*F)(it, it); // could do it, -1 too
+      distances[it] = r.distances;
+    }
+    for (int i = 0; i < n_threads - 1; i++) {
       threads[i].join();
     }
     return AllTerminalReturn(distances);
@@ -439,8 +509,8 @@ public:
     }
 
     // Initialize n_threads barriers for synchronization
-    std::barrier barrier(V);
-    std::vector<std::thread> threads(n_threads);
+    std::barrier barrier(n_threads);
+    std::vector<std::thread> threads(n_threads - 1);
     int block_size = V / n_threads;
 
     for (int block = 0; block < n_threads - 1; block++) {
@@ -464,28 +534,33 @@ public:
       });
     }
     // Last block
-    threads[n_threads - 1] = std::thread([this, &dist, block_size, &barrier]() {
-      for (int k = 0; k < V; k++) {
-        for (int i = (n_threads - 1) * block_size; i < V; i++) {
-          if (i == k) {
+    for (int k = 0; k < V; k++) {
+      for (int i = (n_threads - 1) * block_size; i < V; i++) {
+        if (i == k) {
+          continue;
+        }
+        for (int j = 0; j < V; j++) {
+          if (j == k || j == i) {
             continue;
           }
-          for (int j = 0; j < V; j++) {
-            if (j == k || j == i) {
-              continue;
-            }
-            if (dist[i][k] != INT_MAX && dist[k][j] != INT_MAX && dist[i][j] > dist[i][k] + dist[k][j]) {
-              dist[i][j] = dist[i][k] + dist[k][j];
-            }
+          if (dist[i][k] != INT_MAX && dist[k][j] != INT_MAX && dist[i][j] > dist[i][k] + dist[k][j]) {
+            dist[i][j] = dist[i][k] + dist[k][j];
           }
         }
-        barrier.arrive_and_wait();
       }
-    });
+      barrier.arrive_and_wait();
+    }
 
     // Join threads
-    for (int i = 0; i < n_threads; i++) {
+    for (int i = 0; i < n_threads - 1; i++) {
       threads[i].join();
+    }
+
+    // Check the diagonal
+    for (int i = 0; i < V; i++) {
+      if (dist[i][i] < 0) {
+        throw "Negative cycle detected";
+      }
     }
     return AllTerminalReturn(dist);
   }
@@ -596,21 +671,21 @@ public:
                      std::vector<int> &prev,
                      std::vector<Edge> &edges,
                      int n_threads) {
-    std::vector<std::thread> threads(n_threads);
+    std::vector<std::thread> threads(n_threads - 1);
     int block_size = edges.size() / n_threads;
     Edge *start_edge = &edges[0];
     for (int i = 0; i < n_threads - 1; i++) {
       threads[i] = std::thread(&Graph::relaxThread, this, std::ref(buckets), std::ref(dist), std::ref(prev), start_edge, start_edge + block_size);
       start_edge += block_size;
     }
-    threads[n_threads - 1] = std::thread(&Graph::relaxThread, this, std::ref(buckets), std::ref(dist), std::ref(prev), start_edge, &edges[edges.size()]);
-    for (int i = 0; i < n_threads; i++) {
+    relaxThread(buckets, dist, prev, start_edge, &edges[edges.size()]);
+    for (int i = 0; i < n_threads - 1; i++) {
       threads[i].join();
     }
   }
 
   SourceTargetReturn parallelDeltaStepping(int source, int destination) {
-    std::vector<int> dist(this->V, std::numeric_limits<int>::max());
+    std::vector<int> dist(this->V, INT_MAX);
     std::vector<int> prev(this->V, -1);
     std::unordered_map<int, std::list<int>> buckets;
 
@@ -670,15 +745,7 @@ public:
 };
 
 int main() {
-  Graph g(7, 2, 32);
-  g.addEdge(0, 1, 1);
-  g.addEdge(0, 2, 1);
-  g.addEdge(1, 3, 2);
-  g.addEdge(2, 3, 1);
-  g.addEdge(3, 4, 1);
-  g.addEdge(4, 5, 1);
-  g.addEdge(5, 6, 3);
-
-  g.compare_algorithms(0, 5);
+  Graph g = Graph::generate_graph_parallel(20, 0.4, 100, 32, 1);
+  g.compare_algorithms(0, 1);
   return 0;
 }
