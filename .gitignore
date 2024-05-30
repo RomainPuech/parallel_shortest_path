@@ -1,4 +1,9 @@
 
+# General Files
 *.exe
 .vscode/settings.json
 /.vscode
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+# data/  # To remove later
