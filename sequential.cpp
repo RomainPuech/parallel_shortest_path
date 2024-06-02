@@ -174,7 +174,7 @@ public:
     Graph g(n_vertices, delt, n_threads);
     std::vector<std::thread> threads(n_threads - 1);
     int block_size = n_vertices / n_threads;
-    int n_edges = n_vertices * (n_vertices - 1) * edge_density;
+    //int n_edges = n_vertices * (n_vertices - 1) * edge_density;
     for (int i = 0; i < n_threads - 1; i++) {
       threads[i] = std::thread([&g, i, block_size, n_vertices, edge_density, max_cost]() {
         std::hash<std::thread::id> hasher;
@@ -424,7 +424,7 @@ public:
 
     dist[s] = 0;
     reachable_unvisited.insert(s);
-    while ((dist[d] == INT_MAX || all_targets) && !reachable_unvisited.empty()) {
+    while (!reachable_unvisited.empty()) {
       // Pick closest element in reachables
       int mindist = INT_MAX;
       int minvert = -1;
@@ -434,6 +434,8 @@ public:
           mindist = dist[minvert];
         }
       }
+
+      if (!all_targets && minvert == d){break;}
 
       // Set it to visited
       reachable_unvisited.erase(minvert);
