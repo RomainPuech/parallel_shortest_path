@@ -17,6 +17,83 @@ using namespace std::chrono;
 
 #pragma GCC diagnostic ignored "-Wvla"
 
+// Custom data structures
+template <typename T>
+struct perishable_pointer {
+  T *ptr;
+  int tag;
+  perishable_pointer() : ptr(nullptr), tag(-1) {}
+  perishable_pointer(T *ptr_, int tag_) : ptr(ptr_), tag(tag_) {}
+};
+
+template <typename T>
+class ll_collection{
+  // doesn t support remove!
+  protected:
+    int V;
+    int p;
+    std::atomic<int> counter; // counter for the number of elements in the collection
+    // TO BE REPLACED BY C ARRAYS
+    std::vector<std::mutex> p_locks; // locks for each sublist
+    std::vector<std::mutex> V_locks; // locks for each pointer
+
+  public:
+    std::vector<std::list<T>> data; // list of sublists
+    std::vector<perishable_pointer<T>> perishable_pointers; // pointers to the elements. To initialize to nullptr
+
+    ll_collection(int V_, int p_): V(V_), p(p_){
+      data = std::vector<std::list<T>>(p);
+      perishable_pointers = std::vector<perishable_pointer<T>>(V, perishable_pointer<T>()); // might be long? but initialize it only once and change tag
+      p_locks = std::vector<std::mutex>(p);
+      V_locks = std::vector<std::mutex>(V); 
+      counter = 0;
+
+    }
+
+    bool replace_if_better(T element, int index, int current_tag, std::vector<int> &dist){
+      if ( (perishable_pointers[index].tag != current_tag) || (  (perishable_pointers[index].ptr)->cost + dist[(perishable_pointers[index].ptr)->from] < dist[(perishable_pointers[index].ptr)->vertex]    ) ){
+        // take a lock.
+        // no need to lock distance as it is not modified in this phase
+        V_locks[index].lock();
+        if ( (perishable_pointers[index].tag != current_tag) || (  (perishable_pointers[index].ptr)->cost + dist[(perishable_pointers[index].ptr)->from] < dist[(perishable_pointers[index].ptr)->vertex]    ) ){
+          int ll_index = counter++;
+          p_locks[ll_index % p].lock();
+          data[ll_index % p].push_back(element); // TODO: define non-blocking pushback, that returns pointer to it
+          perishable_pointers[index] = perishable_pointer(&data[ll_index % p].back(), current_tag);
+          p_locks[ll_index % p].unlock();
+          V_locks[index].unlock();
+          return true;
+        }
+      }
+      return false;
+    }
+
+    bool contains(int index,int current_tag){
+      return perishable_pointers[index].tag == current_tag;
+    }
+
+    void reset(){
+      // delete all content of linkedlists
+      for (int i = 0; i < p; i++){
+        data[i].clear();
+      }
+    }
+    void display(){
+      for(int i=0;i<p;i++){
+        std::cout << "List " << i << ": ";
+        for (T element : data[i]){
+          std::cout << "(" << element.from << ","<< element.vertex << "," << element.cost << "),  ";
+        }
+        std::cout << "\n";
+      }
+    }
+
+    // iterator for the collection
+    
+
+
+};
+
 struct Edge {
   int from;
   int vertex;
@@ -170,6 +247,16 @@ public:
     }
   }
 
+  void display() {
+    for (int i = 0; i < V; i++) {
+      std::cout << i << ": ";
+      for (const Edge e : adj[i]) {
+        std::cout << e.vertex << "(" << e.cost << ") ";
+      }
+      std::cout << "\n";
+    }
+  }
+
   static Graph generate_graph_parallel(int n_vertices, double edge_density, int max_cost, int n_threads, int delt) {
     Graph g(n_vertices, delt, n_threads);
     std::vector<std::thread> threads(n_threads - 1);
@@ -214,8 +301,8 @@ public:
   }
 
   void compare_algorithms(int s, int d, bool debug = true) {
-    std::vector<std::string> names_ST{"DijkstraSourceTarget", "Delta", "UNWEIGHTED BFS_SourceTarget", "UNWEIGHTED DFS_SourceTarget"};
-    std::vector<SourceTargetReturn (Graph::*)(int, int)> ST_Funcs{&Graph::DijkstraSourceTarget, &Graph::parallelDeltaStepping, &Graph::BFS_ST, &Graph::DFS_ST};
+    std::vector<std::string> names_ST{"DijkstraSourceTarget", "Delta", "CustomDelta"};//, "UNWEIGHTED BFS_SourceTarget", "UNWEIGHTED DFS_SourceTarget"};
+    std::vector<SourceTargetReturn (Graph::*)(int, int)> ST_Funcs{&Graph::DijkstraSourceTarget, &Graph::parallelDeltaStepping,&Graph::customParallelDeltaStepping};//, &Graph::BFS_ST, &Graph::DFS_ST};
     for (size_t i = 0; i < names_ST.size(); i++) {
       std::cout << "   " << names_ST[i] << ": " << std::flush;
       auto start = high_resolution_clock::now();
@@ -240,8 +327,19 @@ public:
         std::cout << "\n\n";
       }
       std::cout << std::flush;
+      if (r.distance[d] != INT_MAX) {
+          std::cout << "Distance: " << r.distance[d] << "\n";
+          std::cout << "Path: ";
+          for (int v : r.path) {
+            std::cout << v << " ";
+          }
+        } else {
+          std::cout << "No path found.";
+        }
+        std::cout << "\n\n";
     }
-
+    
+  return;
     // Define similar things for all terminal from the source-all terminal problem
     std::vector<std::string> names_SA{"DijkstraSourceAll", "UNWEIGHTED BFS_SourceAll", "UNWEIGHTED DFS_SourceAll"};
     std::vector<SourceAllReturn (Graph::*)(int, int)> SA_Funcs{&Graph::DijkstraSourceAll, &Graph::BFS_AT, &Graph::DFS_AT};
@@ -260,6 +358,10 @@ public:
         std::cout << "\n\n";
       }
       std::cout << std::flush;
+      if (r.distances[d] != INT_MAX) {
+          std::cout << "Distance: " << r.distances[d] << "\n";
+      }
+        std::cout << "\n\n";
     }
 
     // Generate All-Terminal from Source-All-Terminal (SEQUENTIAL)
@@ -643,17 +745,31 @@ public:
   ////// parallel delta-stepping
 
   // helper functions
+  bool update_dist(std::vector<int> &dist, std::vector<int> &prev, std::vector<std::mutex> &distlocks, int u, int v, int new_dist) {
+    if (new_dist < dist[v]) {
+      std::lock_guard<std::mutex> lock(distlocks[v]);
+      if (new_dist < dist[v]) {
+        dist[v] = new_dist;
+        prev[v] = u;
+      }
+      return true;
+    }
+    return false;
+
+  }
   void relaxThread(std::unordered_map<int, std::list<int>> &buckets,
                    std::vector<int> &dist,
                    std::vector<int> &prev,
+                   std::vector<std::mutex> &distlocks,
                    Edge *start_edge,
                    Edge *end_edge) {
+    double duration_operations = 0.;
+    int operations = 0;
     while (start_edge != end_edge) {
+      auto start = high_resolution_clock::now();
       Edge e = *start_edge;
       int new_dist = dist[e.from] + e.cost;
-      if (new_dist < dist[e.vertex]) {
-        dist[e.vertex] = new_dist;
-        prev[e.vertex] = e.from;
+      if(update_dist(dist, prev, distlocks, e.from, e.vertex, new_dist)){
         int bucket_index = new_dist / delta;
         if (buckets.find(bucket_index) == buckets.end()) {
           buckets[bucket_index] = std::list<int>({e.vertex});
@@ -662,25 +778,91 @@ public:
         }
       }
       start_edge++;
+      auto stop = high_resolution_clock::now();
+      duration_operations += (double) (duration_cast<microseconds>(stop - start)).count() / 1000;
+      operations++;
     }
+    //std::cout<<"Thread finished with "<<operations<<" operations and "<<duration_operations<<" ms"<<std::endl;
   }
+  void customRelaxThread(std::unordered_map<int, std::list<int>> &buckets,
+                   std::vector<int> &dist,
+                   std::vector<int> &prev,
+                   ll_collection<Edge> &edges_collection,
+                   int thread_id) {
+    //std::cout<<"Inside relaxThread"<<std::endl;
+    double duration_operations = 0.;
+    int operations = 0;
+    for(Edge e : edges_collection.data[thread_id]) {
+      auto start = high_resolution_clock::now();
+      int new_dist = dist[e.from] + e.cost;
+      int v = e.vertex;
+      if (new_dist < dist[v]) {
+        dist[v] = new_dist;
+        prev[v] = e.from;
+        int bucket_index = new_dist / delta;
+        if (buckets.find(bucket_index) == buckets.end()) {
+          buckets[bucket_index] = std::list<int>({e.vertex});
+        } else {
+          buckets[bucket_index].push_back(e.vertex);
+        }
+      }
+      auto stop = high_resolution_clock::now();
+      duration_operations += (double) (duration_cast<microseconds>(stop - start)).count() / 1000;
+      operations++;
+    }
+    //std::cout<<"Thread "<<thread_id<<" finished with "<<operations<<" operations and "<<duration_operations<<" ms"<<std::endl;
+  }
+
+  //int new_dist = dist[u] + e.cost;
+  //          if (new_dist < dist[e.vertex]) {
+  //            dist[e.vertex] = new_dist;
+  //            prev[e.vertex] = u;
+   //           int bucket_index = new_dist / delta;
+   //           if (bucket_index == i) {
+   //             bucket.push_back(e.vertex); // should remove it from old bucket as well...
+   //           } else if (buckets.find(bucket_index) == buckets.end()) {
+   //             buckets[bucket_index] = std::list<int>({e.vertex});
+   //           } else {
+   //             buckets[bucket_index].push_back(e.vertex);
+   //           }
+   //         }
   // TODOs:
   // 1. erase the edge from the bucket it was in
   // 2. think about compatibility of the data structures we use (for buckets, dist and prev) with parallelism
   // 3. adapt for light edges
+  // Dynamic Partitioning with Global Buckets
   void parallelRelax(std::unordered_map<int, std::list<int>> &buckets,
                      std::vector<int> &dist,
                      std::vector<int> &prev,
+                     std::vector<std::mutex> &distlocks,
                      std::vector<Edge> &edges,
                      int n_threads) {
     std::vector<std::thread> threads(n_threads - 1);
     int block_size = edges.size() / n_threads;
     Edge *start_edge = &edges[0];
     for (int i = 0; i < n_threads - 1; i++) {
-      threads[i] = std::thread(&Graph::relaxThread, this, std::ref(buckets), std::ref(dist), std::ref(prev), start_edge, start_edge + block_size);
+      threads[i] = std::thread(&Graph::relaxThread, this, std::ref(buckets), std::ref(dist), std::ref(prev), std::ref(distlocks), start_edge, start_edge + block_size);
       start_edge += block_size;
     }
-    relaxThread(buckets, dist, prev, start_edge, &edges[edges.size()]);
+    relaxThread(buckets, dist, prev, distlocks, start_edge, &edges[edges.size()]);
+    for (int i = 0; i < n_threads - 1; i++) {
+      threads[i].join();
+    }
+  }
+
+  void customParallelRelax(std::unordered_map<int, std::list<int>> &buckets,
+                     std::vector<int> &dist,
+                     std::vector<int> &prev,
+                     //std::vector<std::mutex> &distlocks, // no need to, now!
+                     ll_collection<Edge> &edges_collection) {
+    //std::cout<<"Inside customParallelRelax"<<std::endl;
+    std::vector<std::thread> threads(n_threads - 1);
+    for (int i = 0; i < n_threads - 1; i++) {
+      threads[i] = std::thread(&Graph::customRelaxThread, this, std::ref(buckets), std::ref(dist), std::ref(prev), std::ref(edges_collection),i);
+      //std::cout<<"Thread "<<i<<" created"<<std::endl;
+    }
+    customRelaxThread(buckets, dist, prev, edges_collection,n_threads-1);
+    //std::cout<<"Last Thread created"<<std::endl;
     for (int i = 0; i < n_threads - 1; i++) {
       threads[i].join();
     }
@@ -690,11 +872,19 @@ public:
     std::vector<int> dist(this->V, INT_MAX);
     std::vector<int> prev(this->V, -1);
     std::unordered_map<int, std::list<int>> buckets;
+    std::vector<std::mutex> distlocks(this->V);
 
     dist[source] = 0;
     buckets[0].push_back(source);
+    double duration_exploration = 0.;
+    double duration_heavy = 0.;
+    auto start = high_resolution_clock::now();
+    auto stop = high_resolution_clock::now();
+
 
     while (!buckets.empty()) {
+      start = high_resolution_clock::now();
+      
       int i = 0;
       while (buckets.find(i) == buckets.end()) {
         ++i;
@@ -730,9 +920,92 @@ public:
         }
       }
       // Process heavy edges
-      parallelRelax(buckets, dist, prev, heavy_edges, true);
+      stop = high_resolution_clock::now();
+      duration_exploration += (double) (duration_cast<microseconds>(stop - start)).count() / 1000;
+      start = high_resolution_clock::now();
+      parallelRelax(buckets, dist, prev, distlocks, heavy_edges, true);
+      stop = high_resolution_clock::now();
+      duration_heavy += (double) (duration_cast<microseconds>(stop - start)).count() / 1000;
     }
 
+    std::cout << "Exploration time: " << duration_exploration << " milliseconds. \n";
+    std::cout << "Heavy edges time: " << duration_heavy << " milliseconds. \n";
+
+    // Make the return struct
+    std::vector<int> rpath;
+    for (int at = destination; at != -1; at = prev[at]) {
+      rpath.push_back(at);
+    }
+    std::vector<int> path;
+    for (size_t i = 0; i < rpath.size(); ++i) {
+      path.push_back(rpath[rpath.size() - i - 1]);
+    }
+    return SourceTargetReturn(path, dist);
+  }
+
+  SourceTargetReturn customParallelDeltaStepping(int source, int destination) {
+    std::vector<int> dist(this->V, INT_MAX);
+    std::vector<int> prev(this->V, -1);
+    std::unordered_map<int, std::list<int>> buckets;
+    //std::vector<std::mutex> distlocks(this->V); // no need to anymore
+    dist[source] = 0;
+    buckets[0].push_back(source);
+
+    ll_collection<Edge> heavy_edges(this->V, this->n_threads);
+    ll_collection<Edge> light_edges(this->V, this->n_threads);
+
+    auto start = high_resolution_clock::now();
+    auto stop = high_resolution_clock::now();
+    double duration_exploration = 0.;
+    double duration_heavy = 0.;
+
+    int iteration_heavy = 0;
+    int iteration_light = 0;
+    //std::cout<<"iteration "<<iteration<<std::endl;
+
+    while (!buckets.empty()) {
+      start = high_resolution_clock::now();
+      int i = 0;
+      while (buckets.find(i) == buckets.end()) {
+        ++i;
+      }
+
+      std::list<int> bucket = buckets[i];
+
+      // Process light edges
+      while (!bucket.empty()) {
+        buckets[i] = std::list<int>({}); // clear the bucket
+        // parallelize this loop
+        int u = bucket.front();
+        bucket.pop_front();
+        for (const Edge e : adj[u]) {
+          if (e.cost <= delta) {
+            light_edges.replace_if_better(e, e.vertex, iteration_light, dist);
+          } else {
+            heavy_edges.replace_if_better(e, e.vertex, iteration_light, dist);
+          }
+        }
+        customParallelRelax(buckets, dist, prev, light_edges);
+        light_edges.reset();
+        bucket = buckets[i];
+        iteration_light++;
+      }
+      buckets.erase(i);
+      // Process heavy edges
+      //std::cout<<"Heavy Request created "<<iteration<<std::endl;
+      //heavy_edges.display();
+      stop = high_resolution_clock::now();
+      duration_exploration += (double) (duration_cast<microseconds>(stop - start)).count() / 1000;
+      start = high_resolution_clock::now();
+      customParallelRelax(buckets, dist, prev, heavy_edges);
+      stop = high_resolution_clock::now();
+      heavy_edges.reset();
+      duration_heavy += (double) (duration_cast<microseconds>(stop - start)).count() / 1000;
+      iteration_heavy++;
+    }
+
+    std::cout << "Exploration time: " << duration_exploration << " milliseconds. \n";
+    std::cout << "Heavy edges time: " << duration_heavy << " milliseconds. \n";
     // Make the return struct
     std::vector<int> rpath;
     for (int at = destination; at != -1; at = prev[at]) {
@@ -747,7 +1020,40 @@ public:
 };
 
 int main() {
-  Graph g = Graph::generate_graph_parallel(20, 0.4, 100, 32, 1);
-  g.compare_algorithms(0, 1);
+  // test the ll_collection
+  std::vector<int> dist(10, 10);
+  Edge e(0, 1, 2);
+  Edge e3(0, 2, 3);
+  Edge e2(0, 2, 1);
+  ll_collection<Edge> c(10, 2);
+  c.replace_if_better(e, 1, 0, dist);
+  c.replace_if_better(e2, 2, 0, dist);
+  c.replace_if_better(e3, 2, 0, dist);
+  std::cout<<(c.perishable_pointers[1].ptr)->cost<<std::endl;
+  std::cout<<(c.perishable_pointers[2].ptr)->cost<<std::endl;
+  std::cout<<c.data[0].begin()->vertex<<std::endl;
+  std::cout<<c.data[1].begin()->vertex<<std::endl;
+  std::cout<<"?"<<std::endl;
+  c.reset();
+  c.replace_if_better(e, 1, 1, dist);
+  c.replace_if_better(e3, 2, 1, dist);
+  std::cout<<(c.perishable_pointers[1].ptr)->cost<<std::endl;
+  std::cout<<(c.perishable_pointers[2].ptr)->cost<<std::endl;
+  std::cout<<c.data[0].begin()->vertex<<std::endl;
+  std::cout<<c.data[1].begin()->vertex<<std::endl;
+  std::cout<<"?"<<std::endl;
+
+
+
+
+  Graph g = Graph::generate_graph_parallel(100, 0.4, 100, 4, 1);
+   std::cout<<" 12 TWELVE THREADS"<<std::endl;
+  g.compare_algorithms(0, 3, false);
+  g.n_threads = 1;
+  std::cout<<" 1 ONE THREAD"<<std::endl;
+  g.compare_algorithms(0, 3, false);
+   //std::cout<<" 5 FIVE THREADS"<<std::endl;
+  //g.n_threads = 5;
+  //g.compare_algorithms(0, 3, false);
   return 0;
 }
