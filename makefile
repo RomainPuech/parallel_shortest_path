@@ -9,7 +9,7 @@ sequential: sequential.cpp
 	$(CC) $(CFLAGS) -o sequential sequential.cpp
 
 parallel: parallel.cpp
-	$(CC) $(CFLAGS) -o parallel parallel.cpp
+	$(CC) $(CFLAGS) -o parallel parallel.cpp utils.cpp
 
 clean:
 	rm -f sequential parallel
