@@ -6,7 +6,7 @@ targets: sequential parallel
 all: targets
 
 sequential: sequential.cpp
-	$(CC) $(CFLAGS) -o sequential sequential.cpp
+	$(CC) $(CFLAGS) -o sequential sequential.cpp utils.cpp
 
 parallel: parallel.cpp
 	$(CC) $(CFLAGS) -o parallel parallel.cpp utils.cpp

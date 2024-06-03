@@ -28,59 +28,6 @@ class ll_collection
 #include "utils.hpp"
 
 
-template <typename T>
-ll_collection<T>::ll_collection(int V_, int p_): V(V_), p(p_) {
-  data = std::vector<std::list<T>>(p);
-  perishable_pointers = std::vector<perishable_pointer<T>>(V, perishable_pointer<T>()); // might be long? but initialize it only once and change tag
-  p_locks = std::vector<std::mutex>(p);
-  V_locks = std::vector<std::mutex>(V); 
-  counter = 0;
-}
-
-template <typename T> 
-bool ll_collection<T>::replace_if_better(T element, int index, int current_tag, std::vector<int> &dist) {
-  if ( (perishable_pointers[index].tag != current_tag) || (  (perishable_pointers[index].ptr)->cost + dist[(perishable_pointers[index].ptr)->from] < dist[(perishable_pointers[index].ptr)->vertex]    ) ){
-    // take a lock.
-    // no need to lock distance as it is not modified in this phase
-    V_locks[index].lock();
-    if ( (perishable_pointers[index].tag != current_tag) || (  (perishable_pointers[index].ptr)->cost + dist[(perishable_pointers[index].ptr)->from] < dist[(perishable_pointers[index].ptr)->vertex]    ) ){
-      int ll_index = counter++;
-      p_locks[ll_index % p].lock();
-      data[ll_index % p].push_back(element); // TODO: define non-blocking pushback, that returns pointer to it
-      perishable_pointers[index] = perishable_pointer(&data[ll_index % p].back(), current_tag);
-      p_locks[ll_index % p].unlock();
-      V_locks[index].unlock();
-      return true;
-    }
-  }
-  return false;
-}
-
-template <typename T> 
-bool ll_collection<T>::contains(int index,int current_tag) {
-  return perishable_pointers[index].tag == current_tag;
-}
-
-template <typename T> 
-void ll_collection<T>::reset(){
-  // delete all content of linkedlists
-  for (int i = 0; i < p; i++){
-    data[i].clear();
-  }
-}
-
-template <typename T> 
-void ll_collection<T>::display(){
-  for(int i=0;i<p;i++){
-    std::cout << "List " << i << ": ";
-    for (T element : data[i]){
-      std::cout << "(" << element.from << ","<< element.vertex << "," << element.cost << "),  ";
-    }
-    std::cout << "\n";
-  }
-}
-
-
 int n_digits(int n) {
   if (n == 0) {
     return 1;
