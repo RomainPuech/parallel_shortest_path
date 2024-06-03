@@ -4,10 +4,11 @@ TODO: Split the Graph Class
 
 
 
-
-
 */
 
+int main(){
+    return 1;
+}
 
 // #include <vector>
 // #include <thread>
