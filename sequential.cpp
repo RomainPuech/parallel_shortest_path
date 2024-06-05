@@ -19,12 +19,223 @@ using namespace std::chrono;
 
 #pragma GCC diagnostic ignored "-Wvla"
 
+<<<<<<< Updated upstream
 #ifndef DEBUG
 #define DEBUG 0
 #endif
 
 class Graph { // Directed Weighted Graph
   const size_t V;
+=======
+// Custom data structures
+template <typename T>
+struct perishable_pointer {
+  T *ptr;
+  int tag;
+  perishable_pointer() : ptr(nullptr), tag(-1) {}
+  perishable_pointer(T *ptr_, int tag_) : ptr(ptr_), tag(tag_) {}
+};
+
+template <typename T>
+class ll_collection {
+  // doesn t support remove!
+protected:
+  int V;
+  int p;
+  std::atomic<int> counter; // counter for the number of elements in the collection
+  // TO BE REPLACED BY C ARRAYS
+  std::vector<std::mutex> p_locks; // locks for each sublist
+  std::vector<std::mutex> V_locks; // locks for each pointer
+
+public:
+  std::vector<std::list<T>> data;                         // list of sublists
+  std::vector<perishable_pointer<T>> perishable_pointers; // pointers to the elements. To initialize to nullptr
+
+  ll_collection(int V_, int p_) : V(V_), p(p_) {
+    data = std::vector<std::list<T>>(p);
+    perishable_pointers = std::vector<perishable_pointer<T>>(V, perishable_pointer<T>()); // might be long? but initialize it only once and change tag
+    p_locks = std::vector<std::mutex>(p);
+    V_locks = std::vector<std::mutex>(V);
+    counter = 0;
+  }
+
+  bool replace_if_better(T element, int index, int current_tag, std::vector<int> &dist) {
+    if ((perishable_pointers[index].tag != current_tag) || ((perishable_pointers[index].ptr)->cost + dist[(perishable_pointers[index].ptr)->from] < dist[(perishable_pointers[index].ptr)->vertex])) {
+      // take a lock.
+      // no need to lock distance as it is not modified in this phase
+      V_locks[index].lock();
+      if ((perishable_pointers[index].tag != current_tag) || ((perishable_pointers[index].ptr)->cost + dist[(perishable_pointers[index].ptr)->from] < dist[(perishable_pointers[index].ptr)->vertex])) {
+        int ll_index = counter++;
+        p_locks[ll_index % p].lock();
+        data[ll_index % p].push_back(element); // TODO: define non-blocking pushback, that returns pointer to it
+        perishable_pointers[index] = perishable_pointer(&data[ll_index % p].back(), current_tag);
+        p_locks[ll_index % p].unlock();
+        V_locks[index].unlock();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool contains(int index, int current_tag) {
+    return perishable_pointers[index].tag == current_tag;
+  }
+
+  void reset() {
+    // delete all content of linkedlists
+    for (int i = 0; i < p; i++) {
+      data[i].clear();
+    }
+  }
+  void display() {
+    for (int i = 0; i < p; i++) {
+      std::cout << "List " << i << ": ";
+      for (T element : data[i]) {
+        std::cout << "(" << element.from << "," << element.vertex << "," << element.cost << "),  ";
+      }
+      std::cout << "\n";
+    }
+  }
+
+  // iterator for the collection
+};
+
+struct Edge {
+  int from;
+  int vertex;
+  int cost;
+  Edge(int vertex_, int cost_) {
+    vertex = vertex_;
+    cost = cost_;
+  }
+  Edge(int from_, int vertex_, int cost_) {
+    from = from_;
+    vertex = vertex_;
+    cost = cost_;
+  }
+  bool operator==(const Edge &other) const { return from == other.from && vertex == other.vertex && cost == other.cost; }
+};
+
+// Define a hash function
+template <>
+struct std::hash<Edge> {
+  std::size_t operator()(const Edge &e) const {
+    // Combine the hashes of the individual members
+    std::size_t h0 = std::hash<int>()(e.from);
+    std::size_t h1 = std::hash<int>()(e.vertex);
+    std::size_t h2 = std::hash<int>()(e.cost);
+    return h0 ^ (h1 << 1) ^ (h2 << 2);
+  }
+};
+
+struct SourceTargetReturn {
+  std::vector<int> path;
+  std::vector<int> distance;
+  SourceTargetReturn(std::vector<int> path_, std::vector<int> distance_) : path(path_), distance(distance_) {
+    // Set to -1 all unreachable nodes
+    for (size_t i = 0; i < distance.size(); i++) {
+      if (distance[i] == INT_MAX) {
+        distance[i] = -1;
+      }
+    }
+  }
+};
+
+struct SourceAllReturn {
+  std::vector<int> distances;
+  SourceAllReturn(std::vector<int> distances_) : distances(distances_) {
+    // Set to -1 all unreachable nodes
+    for (size_t i = 0; i < distances.size(); i++) {
+      if (distances[i] == INT_MAX) {
+        distances[i] = -1;
+      }
+    }
+  }
+};
+
+struct AllTerminalReturn {
+  std::vector<std::vector<int>> distances;
+  AllTerminalReturn(std::vector<std::vector<int>> distances_) : distances(distances_) {
+    // Set to -1 all unreachable nodes
+    for (size_t i = 0; i < distances.size(); i++) {
+      for (size_t j = 0; j < distances[i].size(); j++) {
+        if (distances[i][j] == INT_MAX) {
+          distances[i][j] = -1;
+        }
+      }
+    }
+  }
+};
+
+int n_digits(int n) {
+  if (n == 0) {
+    return 1;
+  } else if (n == -1) {
+    return 2;
+  }
+  int digits = 0;
+  while (n) {
+    n /= 10;
+    digits++;
+  }
+  return digits;
+}
+
+void print_spaced(int x, int n) {
+  int digits = n_digits(x);
+  std::cout << x;
+  for (int i = 0; i < n - digits; i++) {
+    std::cout << " ";
+  }
+}
+
+void printDistMatrix(std::vector<std::vector<int>> distances, int V) {
+  std::vector<int> max_dist(V + 1, -1);
+  for (int X = 0; X < V; X++) {
+    max_dist[X] = std::max(max_dist[X], X);
+    for (int Y = 0; Y < V; Y++) {
+      max_dist[Y + 1] = std::max(max_dist[Y + 1], distances[X][Y]);
+      if (distances[X][Y] == -1) {
+        max_dist[Y + 1] = std::max(max_dist[Y + 1], 10);
+      }
+    }
+  }
+  max_dist[0] = V - 1;
+  for (int X = 0; X < V + 1; X++) {
+    max_dist[X] = n_digits(max_dist[X]) + 1;
+  }
+  // max_dist[i] is now the maximum number of digits in the i-th column (0 is index)
+
+  std::cout << "Distances: \n";
+  for (int X = 0; X < V + 1; X++) {
+    if (X == 0) {
+      std::cout << "TO ";
+      for (int i = 0; i < max_dist[0] + 5 - 3; ++i) {
+        std::cout << " ";
+      }
+    } else {
+      std::cout << "FROM ";
+      print_spaced(X - 1, max_dist[0]);
+    }
+    std::cout << " ";
+
+    for (int Y = 1; Y < V + 1; Y++) {
+      if (X == 0) {
+        print_spaced(Y - 1, max_dist[Y]);
+      } else {
+        print_spaced(distances[X - 1][Y - 1], max_dist[Y]);
+      }
+    }
+    std::cout << "\n";
+  }
+  std::cout << "\n\n"
+            << std::flush;
+}
+
+class Graph {
+  // Directed weighted graph
+  const int V;
+>>>>>>> Stashed changes
   std::unordered_set<Edge> *adj;
 
 public:
@@ -60,9 +271,15 @@ public:
     }
     Graph g(n_vertices, delt, n_threads);
     std::vector<std::thread> threads(n_threads - 1);
+<<<<<<< Updated upstream
     size_t block_size = n_vertices / n_threads;
 
     for (size_t i = 0; i < n_threads - 1; i++) {
+=======
+    int block_size = n_vertices / n_threads;
+    // int n_edges = n_vertices * (n_vertices - 1) * edge_density;
+    for (int i = 0; i < n_threads - 1; i++) {
+>>>>>>> Stashed changes
       threads[i] = std::thread([&g, i, block_size, n_vertices, edge_density, max_cost]() {
         std::hash<std::thread::id> hasher;
         static thread_local std::mt19937 generator = std::mt19937(clock() + hasher(std::this_thread::get_id()));
@@ -101,8 +318,13 @@ public:
   }
 
   void compare_algorithms(int s, int d, bool debug = true) {
+<<<<<<< Updated upstream
     std::vector<std::string> names_ST{"DijkstraSourceTarget", /* "Delta",*/ "CustomDeltaNoPara", "CustomDeltaPara"};                                                                                                      //, "UNWEIGHTED BFS_SourceTarget", "UNWEIGHTED DFS_SourceTarget"};
     std::vector<SourceTargetReturn (Graph::*)(int, int)> ST_Funcs{&Graph::DijkstraSourceTarget, /*&Graph::parallelDeltaStepping,*/ &Graph::customParallelDeltaSteppingNoForce, &Graph::customParallelDeltaSteppingForce}; //, &Graph::BFS_ST, &Graph::DFS_ST};
+=======
+    std::vector<std::string> names_ST{"DijkstraSourceTarget", /* "Delta",*/ "CustomDeltaNoPara", "CustomDeltaPara"};                                                                                         //, "UNWEIGHTED BFS_SourceTarget", "UNWEIGHTED DFS_SourceTarget"};
+    std::vector<SourceTargetReturn (Graph::*)(int, int)> ST_Funcs{&Graph::DijkstraSourceTarget, /*&Graph::parallelDeltaStepping,*/ &Graph::parallelDeltaStepping, &Graph::customParallelDeltaSteppingForce}; //, &Graph::BFS_ST, &Graph::DFS_ST};
+>>>>>>> Stashed changes
     for (size_t i = 0; i < names_ST.size(); i++) {
       std::cout << "   " << names_ST[i] << ": " << std::flush;
       auto start = high_resolution_clock::now();
@@ -127,6 +349,19 @@ public:
         std::cout << "\n\n";
       }
       std::cout << std::flush;
+<<<<<<< Updated upstream
+=======
+      if (r.distance[d] != INT_MAX) {
+        std::cout << "Distance: " << r.distance[d] << "\n";
+        std::cout << "Path: ";
+        for (int v : r.path) {
+          std::cout << v << " ";
+        }
+      } else {
+        std::cout << "No path found.";
+      }
+      std::cout << "\n\n";
+>>>>>>> Stashed changes
     }
 
     return;
@@ -591,6 +826,7 @@ public:
 #if DEBUG
       auto stop = high_resolution_clock::now();
       duration_operations += (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
+<<<<<<< Updated upstream
 #endif
       operations++;
     }
@@ -599,28 +835,45 @@ public:
 #endif
   }
   void customRelaxThread(std::unordered_map<int, std::list<int>> &buckets,
+=======
+      operations++;
+    }
+    // std::cout<<"Thread finished with "<<operations<<" operations and "<<duration_operations<<" ms"<<std::endl;
+  }
+  void customRelaxThread(std::unordered_map<int, std::unordered_map<int, bool>> &buckets,
+>>>>>>> Stashed changes
                          std::vector<int> &dist,
                          std::vector<int> &prev,
                          ll_collection<Edge> &edges_collection,
                          int thread_id,
                          double &duration) {
+<<<<<<< Updated upstream
 #if DEBUG
     std::cout << "Inside relaxThread" << std::endl;
 #endif
 
+=======
+    // std::cout<<"Inside relaxThread"<<std::endl;
+>>>>>>> Stashed changes
     int operations = 0;
     auto start = high_resolution_clock::now();
     for (Edge e : edges_collection.data[thread_id]) {
       int new_dist = dist[e.from] + e.cost;
       int v = e.vertex;
       if (new_dist < dist[v]) {
+        // remove from old bucket
+        if (prev[v] != -1) {
+          int old_bucket_index = dist[v] / delta;
+          buckets[old_bucket_index][v] = false;
+        }
         dist[v] = new_dist;
         prev[v] = e.from;
         int bucket_index = new_dist / delta;
         if (buckets.find(bucket_index) == buckets.end()) {
-          buckets[bucket_index] = std::list<int>({e.vertex});
+          std::unordered_map<int, bool> bkt = std::unordered_map<int, bool>({{e.vertex, true}});
+          buckets[bucket_index] = bkt;
         } else {
-          buckets[bucket_index].push_back(e.vertex);
+          buckets[bucket_index][e.vertex] = true;
         }
       }
       operations++;
@@ -667,7 +920,11 @@ public:
     }
   }
 
+<<<<<<< Updated upstream
   void customParallelRelax(std::unordered_map<int, std::list<int>> &buckets,
+=======
+  void customParallelRelax(std::unordered_map<int, std::unordered_map<int, bool>> &buckets,
+>>>>>>> Stashed changes
                            std::vector<int> &dist,
                            std::vector<int> &prev,
                            // std::vector<std::mutex> &distlocks, // no need to, now!
@@ -682,23 +939,54 @@ public:
       double durations[n_threads];
       auto start = high_resolution_clock::now();
       // we parallelize the relax operation
+<<<<<<< Updated upstream
       for (size_t i = 0; i < n_threads - 1; i++) {
         // threads[i] = std::thread(&do_nothing);
         threads[i] = std::thread(&Graph::customRelaxThread, this, std::ref(buckets), std::ref(dist), std::ref(prev), std::ref(edges_collection), i, std::ref(durations[i]));
+=======
+      std::unordered_set<int> ignored;
+      for (int i = 0; i < n_threads - 1; i++) {
+        // threads[i] = std::thread(&do_nothing);
+        if (edges_collection.data[i].size() > 0) {
+          threads[i] = std::thread(&Graph::customRelaxThread, this, std::ref(buckets), std::ref(dist), std::ref(prev), std::ref(edges_collection), i, std::ref(durations[i]));
+        } else {
+          ignored.insert(i);
+        }
+>>>>>>> Stashed changes
         // customRelaxThread(buckets, dist, prev, edges_collection,i);
         // threads[i].join();
         // std::cout<<"Thread "<<i<<" created"<<std::endl;
       }
+<<<<<<< Updated upstream
       customRelaxThread(buckets, dist, prev, edges_collection, n_threads - 1, durations[n_threads - 1]);
       // std::cout<<"Last Thread created"<<std::endl;
       for (size_t i = 0; i < n_threads - 1; i++) {
         threads[i].join();
+=======
+      if (edges_collection.data[n_threads - 1].size() > 0) {
+        customRelaxThread(buckets, dist, prev, edges_collection, n_threads - 1, durations[n_threads - 1]);
+      } else {
+        ignored.insert(n_threads - 1);
+      }
+      // std::cout<<"Last Thread created"<<std::endl;
+      for (int i = 0; i < n_threads - 1; i++) {
+        if (ignored.find(i) == ignored.end()) {
+          threads[i].join();
+        }
+>>>>>>> Stashed changes
       }
       auto stop = high_resolution_clock::now();
       total_duration = (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
       double duration_operations = 0.;
+<<<<<<< Updated upstream
       for (size_t i = 0; i < n_threads; i++) {
         duration_operations += durations[i];
+=======
+      for (int i = 0; i < n_threads; i++) {
+        if (ignored.find(i) == ignored.end()) {
+          duration_operations += durations[i];
+        }
+>>>>>>> Stashed changes
       }
       // std::cout<<"Total duration: "<<total_duration<<std::endl;
       // std::cout<<"Sum Operations duration: "<<duration_operations<<std::endl;
@@ -709,22 +997,38 @@ public:
       }
       // std::cout<<"sublist length: "<<edges_collection.data[0].size()<<std::endl;
     } else {
+<<<<<<< Updated upstream
       for (size_t i = 0; i < n_threads; i++) {
         // we don t parallelize the relax operation
         double duration = 0.;
         customRelaxThread(buckets, dist, prev, edges_collection, i, duration);
+=======
+      for (int i = 0; i < n_threads; i++) {
+        // we don t parallelize the relax operation
+        double duration = 0.;
+        if (edges_collection.data[i].size() > 0) {
+          customRelaxThread(buckets, dist, prev, edges_collection, i, duration);
+        }
+>>>>>>> Stashed changes
       }
     }
     // std::cout<<"Total duration: "<<total_duration<<std::endl;
     // std::cout<<"Operations duration: "<<duration_operations<<std::endl;
+<<<<<<< Updated upstream
 
 #if DEBUG
+=======
+>>>>>>> Stashed changes
     int total_length = 0;
     for (size_t i = 0; i < n_threads; i++) {
       total_length += edges_collection.data[i].size();
     }
+<<<<<<< Updated upstream
     std::cout << "Total length: " << total_length << std::endl;
 #endif
+=======
+    // std::cout<<"Total length: "<<total_length<<std::endl;
+>>>>>>> Stashed changes
   }
 
   SourceTargetReturn parallelDeltaStepping(int source, int destination) {
@@ -804,10 +1108,14 @@ public:
   SourceTargetReturn customParallelDeltaStepping(int source, int destination, double force_parallelization) {
     std::vector<int> dist(this->V, INT_MAX);
     std::vector<int> prev(this->V, -1);
+<<<<<<< Updated upstream
     std::unordered_map<int, std::list<int>> buckets;
+=======
+    std::unordered_map<int, std::unordered_map<int, bool>> buckets;
+>>>>>>> Stashed changes
     // std::vector<std::mutex> distlocks(this->V); // no need to anymore
     dist[source] = 0;
-    buckets[0].push_back(source);
+    buckets[0][source] = true;
 
     ll_collection<Edge> heavy_edges(this->V, this->n_threads);
     ll_collection<Edge> light_edges(this->V, this->n_threads);
@@ -828,19 +1136,25 @@ public:
         ++i;
       }
 
-      std::list<int> bucket = buckets[i];
+      std::unordered_map<int, bool> bucket = buckets[i]; // this copy might be unecessary - not too long but optimizable
 
       // Process light edges
       while (!bucket.empty()) {
-        buckets[i] = std::list<int>({}); // clear the bucket
+        buckets[i] = std::unordered_map<int, bool>(); // clear the bucket
         // parallelize this loop
-        int u = bucket.front();
-        bucket.pop_front();
-        for (const Edge e : adj[u]) {
-          if (e.cost <= delta) {
-            light_edges.replace_if_better(e, e.vertex, iteration_light, dist);
-          } else {
-            heavy_edges.replace_if_better(e, e.vertex, iteration_light, dist);
+        for (auto pair = bucket.begin(); pair != bucket.end(); ++pair) {
+          int u = pair->first;
+          bool flag = pair->second;
+
+          if (not flag) {
+            continue;
+          }
+          for (const Edge e : adj[u]) {
+            if (e.cost <= delta) {
+              light_edges.replace_if_better(e, e.vertex, iteration_light, dist);
+            } else {
+              heavy_edges.replace_if_better(e, e.vertex, iteration_light, dist);
+            }
           }
         }
         customParallelRelax(buckets, dist, prev, light_edges, force_parallelization);
@@ -895,14 +1209,15 @@ int main() {
   c.replace_if_better(e, 1, 0, dist);
   c.replace_if_better(e2, 2, 0, dist);
   c.replace_if_better(e3, 2, 0, dist);
-  std::cout<<(c.perishable_pointers[1].ptr)->cost<<std::endl;
-  std::cout<<(c.perishable_pointers[2].ptr)->cost<<std::endl;
-  std::cout<<c.data[0].begin()->vertex<<std::endl;
-  std::cout<<c.data[1].begin()->vertex<<std::endl;
-  std::cout<<"?"<<std::endl;
+  std::cout << (c.perishable_pointers[1].ptr)->cost << std::endl;
+  std::cout << (c.perishable_pointers[2].ptr)->cost << std::endl;
+  std::cout << c.data[0].begin()->vertex << std::endl;
+  std::cout << c.data[1].begin()->vertex << std::endl;
+  std::cout << "?" << std::endl;
   c.reset();
   c.replace_if_better(e, 1, 1, dist);
   c.replace_if_better(e3, 2, 1, dist);
+<<<<<<< Updated upstream
   std::cout<<(c.perishable_pointers[1].ptr)->cost<<std::endl;
   std::cout<<(c.perishable_pointers[2].ptr)->cost<<std::endl;
   std::cout<<c.data[0].begin()->vertex<<std::endl;
@@ -917,6 +1232,21 @@ int main() {
   g.n_threads = 1;
   std::cout << " 1 THREAD" << "\n\n";
   g.compare_algorithms(0, 3, false);
+=======
+  std::cout << (c.perishable_pointers[1].ptr)->cost << std::endl;
+  std::cout << (c.perishable_pointers[2].ptr)->cost << std::endl;
+  std::cout << c.data[0].begin()->vertex << std::endl;
+  std::cout << c.data[1].begin()->vertex << std::endl;
+  std::cout << "?" << std::endl;
+
+  Graph g = Graph::generate_graph_parallel(10000, 0.1, 100, 4, 10);
+  // g.display();
+  std::cout << " 4 THREADS" << "\n\n";
+  g.compare_algorithms(0, 9802, false);
+  g.n_threads = 1;
+  std::cout << " 1 THREAD" << "\n\n";
+  g.compare_algorithms(0, 9082, false);
+>>>>>>> Stashed changes
   // std::cout<<" 5 FIVE THREADS"<<std::endl;
   // g.n_threads = 5;
   // g.compare_algorithms(0, 3, false);
