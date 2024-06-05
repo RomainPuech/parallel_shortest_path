@@ -6,16 +6,15 @@ TODO: Split the Graph Class
 
 */
 
-int main(){
-    return 1;
+int main() {
+  return 1;
 }
 
 // #include <vector>
 // #include <thread>
 // #include "utils.hpp"
 // #include <iostream>
-  
-  
+
 //   AllTerminalReturn Floyd_Warshall_Parallel() {
 //     std::vector<std::vector<int>> dist(V, std::vector<int>(V, INT_MAX));
 

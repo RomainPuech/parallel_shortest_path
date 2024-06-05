@@ -13,20 +13,19 @@ class ll_collection
 
 */
 
+#include <iostream>
 #include <limits>
 #include <list>
+#include <mutex>
 #include <queue>
+#include <random>
 #include <set>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
-#include <iostream>
-#include <mutex>
 #include <vector>
-#include <random>
-#include <thread>
 
 #include "utils.hpp"
-
 
 int n_digits(int n) {
   if (n == 0) {
@@ -42,7 +41,6 @@ int n_digits(int n) {
   return digits;
 }
 
-
 void print_spaced(int x, int n) {
   int digits = n_digits(x);
   std::cout << x;
@@ -50,7 +48,6 @@ void print_spaced(int x, int n) {
     std::cout << " ";
   }
 }
-
 
 void printDistMatrix(std::vector<std::vector<int>> distances, int V) {
   std::vector<int> max_dist(V + 1, -1);
@@ -94,4 +91,3 @@ void printDistMatrix(std::vector<std::vector<int>> distances, int V) {
   std::cout << "\n\n"
             << std::flush;
 }
-

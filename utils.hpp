@@ -1,28 +1,26 @@
 #ifndef UTILS_HPP
 #define UTILS_HPP
 
+#include <iostream>
 #include <limits>
 #include <list>
+#include <mutex>
 #include <queue>
+#include <random>
 #include <set>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
-#include <iostream>
-#include <mutex>
 #include <vector>
-#include <random>
-#include <thread>
 
-
-enum class Algorithm {  // Enum for all the algorithms implemented, TODO: Make use of it
-    DIJKSTRA, 
-    BELLMAN_FORD, 
-    FLOYD_WARSHALL, 
-    PARALLEL_DIJKSTRA, 
-    PARALLEL_BELLMAN_FORD, 
-    PARALLEL_FLOYD_WARSHALL, 
-    }; 
-
+enum class Algorithm { // Enum for all the algorithms implemented, TODO: Make use of it
+  DIJKSTRA,
+  BELLMAN_FORD,
+  FLOYD_WARSHALL,
+  PARALLEL_DIJKSTRA,
+  PARALLEL_BELLMAN_FORD,
+  PARALLEL_FLOYD_WARSHALL,
+};
 
 template <typename T>
 struct perishable_pointer {
@@ -32,65 +30,67 @@ struct perishable_pointer {
   perishable_pointer(T *ptr_, int tag_) : ptr(ptr_), tag(tag_) {}
 };
 
-
 template <typename T>
 class ll_collection {
-    protected:
-        int V;
-        int p;
-        std::atomic<int> counter;
-        std::vector<std::mutex> p_locks;
-        std::vector<std::mutex> V_locks;
+  // doesn t support remove!
+protected:
+  size_t V;
+  size_t p;
+  std::atomic<int> counter; // counter for the number of elements in the collection
+  // TO BE REPLACED BY C ARRAYS
+  std::vector<std::mutex> p_locks; // locks for each sublist
+  std::vector<std::mutex> V_locks; // locks for each pointer
 
-    public:
-        std::vector<std::list<T>> data;
-        std::vector<perishable_pointer<T>> perishable_pointers;
+public:
+  std::vector<std::list<T>> data;                         // list of sublists
+  std::vector<perishable_pointer<T>> perishable_pointers; // pointers to the elements. To initialize to nullptr
 
-        ll_collection(int V_, int p_): V(V_), p(p_) {
-            data = std::vector<std::list<T>>(p);
-            perishable_pointers = std::vector<perishable_pointer<T>>(V, perishable_pointer<T>()); // might be long? but initialize it only once and change tag
-            p_locks = std::vector<std::mutex>(p);
-            V_locks = std::vector<std::mutex>(V); 
-            counter = 0;
-        }
+  ll_collection(size_t V_, size_t p_) : V(V_), p(p_) {
+    data = std::vector<std::list<T>>(p);
+    perishable_pointers = std::vector<perishable_pointer<T>>(V, perishable_pointer<T>()); // might be long? but initialize it only once and change tag
+    p_locks = std::vector<std::mutex>(p);
+    V_locks = std::vector<std::mutex>(V);
+    counter = 0;
+  }
 
-        bool replace_if_better(T element, int index, int current_tag, std::vector<int> &dist) {
-            if ( (perishable_pointers[index].tag != current_tag) || (  (perishable_pointers[index].ptr)->cost + dist[(perishable_pointers[index].ptr)->from] < dist[(perishable_pointers[index].ptr)->vertex]    ) ){
-                // take a lock.
-                // no need to lock distance as it is not modified in this phase
-                V_locks[index].lock();
-                if ( (perishable_pointers[index].tag != current_tag) || (  (perishable_pointers[index].ptr)->cost + dist[(perishable_pointers[index].ptr)->from] < dist[(perishable_pointers[index].ptr)->vertex]    ) ){
-                    int ll_index = counter++;
-                    p_locks[ll_index % p].lock();
-                    data[ll_index % p].push_back(element); // TODO: define non-blocking pushback, that returns pointer to it
-                    perishable_pointers[index] = perishable_pointer(&data[ll_index % p].back(), current_tag);
-                    p_locks[ll_index % p].unlock();
-                    V_locks[index].unlock();
-                    return true;
-                }
-            }
-            return false;
-        }
+  bool replace_if_better(T element, int index, int current_tag, std::vector<int> &dist) {
+    if ((perishable_pointers[index].tag != current_tag) || ((perishable_pointers[index].ptr)->cost + dist[(perishable_pointers[index].ptr)->from] < dist[(perishable_pointers[index].ptr)->vertex])) {
+      // take a lock.
+      // no need to lock distance as it is not modified in this phase
+      V_locks[index].lock();
+      if ((perishable_pointers[index].tag != current_tag) || ((perishable_pointers[index].ptr)->cost + dist[(perishable_pointers[index].ptr)->from] < dist[(perishable_pointers[index].ptr)->vertex])) {
+        int ll_index = counter++;
+        p_locks[ll_index % p].lock();
+        data[ll_index % p].push_back(element); // TODO: define non-blocking pushback, that returns pointer to it
+        perishable_pointers[index] = perishable_pointer(&data[ll_index % p].back(), current_tag);
+        p_locks[ll_index % p].unlock();
+        V_locks[index].unlock();
+        return true;
+      }
+    }
+    return false;
+  }
 
-        bool contains(int index,int current_tag) { return perishable_pointers[index].tag == current_tag; }
+  bool contains(int index, int current_tag) {
+    return perishable_pointers[index].tag == current_tag;
+  }
 
-        void reset() {  // delete all content of linkedlists
-            for (int i = 0; i < p; i++){
-                data[i].clear();
-            }
-        }
-
-        void display() {
-            for(int i=0;i<p;i++){
-                std::cout << "List " << i << ": ";
-                for (T element : data[i]){
-                    std::cout << "(" << element.from << ","<< element.vertex << "," << element.cost << "),  ";
-                }
-                std::cout << "\n";
-            }
-        }
+  void reset() {
+    // delete all content of linkedlists
+    for (size_t i = 0; i < p; i++) {
+      data[i].clear();
+    }
+  }
+  void display() {
+    for (size_t i = 0; i < p; i++) {
+      std::cout << "List " << i << ": ";
+      for (T element : data[i]) {
+        std::cout << "(" << element.from << "," << element.vertex << "," << element.cost << "),  ";
+      }
+      std::cout << "\n";
+    }
+  }
 };
-
 
 struct Edge {
   int from;
@@ -108,7 +108,7 @@ struct Edge {
   bool operator==(const Edge &other) const { return from == other.from && vertex == other.vertex && cost == other.cost; }
 };
 
-
+// Define a hash function
 template <>
 struct std::hash<Edge> {
   std::size_t operator()(const Edge &e) const {
@@ -133,7 +133,6 @@ struct SourceTargetReturn {
   }
 };
 
-
 struct SourceAllReturn {
   std::vector<int> distances;
   SourceAllReturn(std::vector<int> distances_) : distances(distances_) {
@@ -145,7 +144,6 @@ struct SourceAllReturn {
     }
   }
 };
-
 
 struct AllTerminalReturn {
   std::vector<std::vector<int>> distances;
