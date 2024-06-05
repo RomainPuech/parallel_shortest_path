@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <chrono>
+#include <fstream>
 #include <iostream>
 #include <limits>
 #include <list>
@@ -51,6 +52,36 @@ public:
       }
       std::cout << "\n";
     }
+  }
+
+  void save_to_file(std::string filename) {
+    std::ofstream file;
+    file.open(filename);
+    file << V << " " << delta << "\n";
+    for (size_t i = 0; i < V; i++) {
+      for (const Edge e : adj[i]) {
+        file << i << " " << e.vertex << " " << e.cost << "\n";
+      }
+    }
+    file.close();
+  }
+
+  void load_from_file(std::string filename) {
+    std::ifstream file;
+    file.open(filename);
+    if (!file.is_open()) {
+      throw "File not found";
+    }
+    size_t V_, delta_;
+    file >> V_ >> delta_;
+    if (V_ != V || delta_ != delta) {
+      throw "Incompatible graph";
+    }
+    size_t v, w, c;
+    while (file >> v >> w >> c) {
+      addEdge(v, w, c);
+    }
+    file.close();
   }
 
   static Graph generate_graph_parallel(size_t n_vertices, double edge_density, int max_cost, size_t n_threads, int delt) {
@@ -945,7 +976,10 @@ int main() {
   */
 
   // "V, density, max_cost, n_threads, delta"
-  Graph g = Graph::generate_graph_parallel(1000, 0.6, 100, 4, 1);
+  //Graph g = Graph::generate_graph_parallel(1000, 0.6, 100, 4, 1);
+  //g.save_to_file("graph.txt");
+  Graph g = Graph(1000,1,4);
+  g.load_from_file("graph.txt");
   std::cout << " 4 THREADS" << "\n\n";
   g.compare_algorithms(0, 3, false);
   g.n_threads = 1;
