@@ -19,14 +19,6 @@ using namespace std::chrono;
 
 #pragma GCC diagnostic ignored "-Wvla"
 
-<<<<<<< Updated upstream
-#ifndef DEBUG
-#define DEBUG 0
-#endif
-
-class Graph { // Directed Weighted Graph
-  const size_t V;
-=======
 // Custom data structures
 template <typename T>
 struct perishable_pointer {
@@ -235,7 +227,6 @@ void printDistMatrix(std::vector<std::vector<int>> distances, int V) {
 class Graph {
   // Directed weighted graph
   const int V;
->>>>>>> Stashed changes
   std::unordered_set<Edge> *adj;
 
 public:
@@ -271,15 +262,9 @@ public:
     }
     Graph g(n_vertices, delt, n_threads);
     std::vector<std::thread> threads(n_threads - 1);
-<<<<<<< Updated upstream
     size_t block_size = n_vertices / n_threads;
 
     for (size_t i = 0; i < n_threads - 1; i++) {
-=======
-    int block_size = n_vertices / n_threads;
-    // int n_edges = n_vertices * (n_vertices - 1) * edge_density;
-    for (int i = 0; i < n_threads - 1; i++) {
->>>>>>> Stashed changes
       threads[i] = std::thread([&g, i, block_size, n_vertices, edge_density, max_cost]() {
         std::hash<std::thread::id> hasher;
         static thread_local std::mt19937 generator = std::mt19937(clock() + hasher(std::this_thread::get_id()));
@@ -318,13 +303,8 @@ public:
   }
 
   void compare_algorithms(int s, int d, bool debug = true) {
-<<<<<<< Updated upstream
     std::vector<std::string> names_ST{"DijkstraSourceTarget", /* "Delta",*/ "CustomDeltaNoPara", "CustomDeltaPara"};                                                                                                      //, "UNWEIGHTED BFS_SourceTarget", "UNWEIGHTED DFS_SourceTarget"};
     std::vector<SourceTargetReturn (Graph::*)(int, int)> ST_Funcs{&Graph::DijkstraSourceTarget, /*&Graph::parallelDeltaStepping,*/ &Graph::customParallelDeltaSteppingNoForce, &Graph::customParallelDeltaSteppingForce}; //, &Graph::BFS_ST, &Graph::DFS_ST};
-=======
-    std::vector<std::string> names_ST{"DijkstraSourceTarget", /* "Delta",*/ "CustomDeltaNoPara", "CustomDeltaPara"};                                                                                         //, "UNWEIGHTED BFS_SourceTarget", "UNWEIGHTED DFS_SourceTarget"};
-    std::vector<SourceTargetReturn (Graph::*)(int, int)> ST_Funcs{&Graph::DijkstraSourceTarget, /*&Graph::parallelDeltaStepping,*/ &Graph::parallelDeltaStepping, &Graph::customParallelDeltaSteppingForce}; //, &Graph::BFS_ST, &Graph::DFS_ST};
->>>>>>> Stashed changes
     for (size_t i = 0; i < names_ST.size(); i++) {
       std::cout << "   " << names_ST[i] << ": " << std::flush;
       auto start = high_resolution_clock::now();
@@ -349,8 +329,6 @@ public:
         std::cout << "\n\n";
       }
       std::cout << std::flush;
-<<<<<<< Updated upstream
-=======
       if (r.distance[d] != INT_MAX) {
         std::cout << "Distance: " << r.distance[d] << "\n";
         std::cout << "Path: ";
@@ -361,7 +339,6 @@ public:
         std::cout << "No path found.";
       }
       std::cout << "\n\n";
->>>>>>> Stashed changes
     }
 
     return;
@@ -826,35 +803,20 @@ public:
 #if DEBUG
       auto stop = high_resolution_clock::now();
       duration_operations += (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
-<<<<<<< Updated upstream
-#endif
-      operations++;
-    }
-#if DEBUG
-    std::cout << "Thread finished with " << operations << " operations and " << duration_operations << " ms" << std::endl;
-#endif
-  }
-  void customRelaxThread(std::unordered_map<int, std::list<int>> &buckets,
-=======
       operations++;
     }
     // std::cout<<"Thread finished with "<<operations<<" operations and "<<duration_operations<<" ms"<<std::endl;
   }
   void customRelaxThread(std::unordered_map<int, std::unordered_map<int, bool>> &buckets,
->>>>>>> Stashed changes
                          std::vector<int> &dist,
                          std::vector<int> &prev,
                          ll_collection<Edge> &edges_collection,
                          int thread_id,
                          double &duration) {
-<<<<<<< Updated upstream
 #if DEBUG
     std::cout << "Inside relaxThread" << std::endl;
 #endif
 
-=======
-    // std::cout<<"Inside relaxThread"<<std::endl;
->>>>>>> Stashed changes
     int operations = 0;
     auto start = high_resolution_clock::now();
     for (Edge e : edges_collection.data[thread_id]) {
@@ -920,11 +882,7 @@ public:
     }
   }
 
-<<<<<<< Updated upstream
-  void customParallelRelax(std::unordered_map<int, std::list<int>> &buckets,
-=======
   void customParallelRelax(std::unordered_map<int, std::unordered_map<int, bool>> &buckets,
->>>>>>> Stashed changes
                            std::vector<int> &dist,
                            std::vector<int> &prev,
                            // std::vector<std::mutex> &distlocks, // no need to, now!
@@ -939,11 +897,6 @@ public:
       double durations[n_threads];
       auto start = high_resolution_clock::now();
       // we parallelize the relax operation
-<<<<<<< Updated upstream
-      for (size_t i = 0; i < n_threads - 1; i++) {
-        // threads[i] = std::thread(&do_nothing);
-        threads[i] = std::thread(&Graph::customRelaxThread, this, std::ref(buckets), std::ref(dist), std::ref(prev), std::ref(edges_collection), i, std::ref(durations[i]));
-=======
       std::unordered_set<int> ignored;
       for (int i = 0; i < n_threads - 1; i++) {
         // threads[i] = std::thread(&do_nothing);
@@ -952,17 +905,10 @@ public:
         } else {
           ignored.insert(i);
         }
->>>>>>> Stashed changes
         // customRelaxThread(buckets, dist, prev, edges_collection,i);
         // threads[i].join();
         // std::cout<<"Thread "<<i<<" created"<<std::endl;
       }
-<<<<<<< Updated upstream
-      customRelaxThread(buckets, dist, prev, edges_collection, n_threads - 1, durations[n_threads - 1]);
-      // std::cout<<"Last Thread created"<<std::endl;
-      for (size_t i = 0; i < n_threads - 1; i++) {
-        threads[i].join();
-=======
       if (edges_collection.data[n_threads - 1].size() > 0) {
         customRelaxThread(buckets, dist, prev, edges_collection, n_threads - 1, durations[n_threads - 1]);
       } else {
@@ -973,20 +919,14 @@ public:
         if (ignored.find(i) == ignored.end()) {
           threads[i].join();
         }
->>>>>>> Stashed changes
       }
       auto stop = high_resolution_clock::now();
       total_duration = (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
       double duration_operations = 0.;
-<<<<<<< Updated upstream
-      for (size_t i = 0; i < n_threads; i++) {
-        duration_operations += durations[i];
-=======
       for (int i = 0; i < n_threads; i++) {
         if (ignored.find(i) == ignored.end()) {
           duration_operations += durations[i];
         }
->>>>>>> Stashed changes
       }
       // std::cout<<"Total duration: "<<total_duration<<std::endl;
       // std::cout<<"Sum Operations duration: "<<duration_operations<<std::endl;
@@ -997,38 +937,24 @@ public:
       }
       // std::cout<<"sublist length: "<<edges_collection.data[0].size()<<std::endl;
     } else {
-<<<<<<< Updated upstream
-      for (size_t i = 0; i < n_threads; i++) {
-        // we don t parallelize the relax operation
-        double duration = 0.;
-        customRelaxThread(buckets, dist, prev, edges_collection, i, duration);
-=======
       for (int i = 0; i < n_threads; i++) {
         // we don t parallelize the relax operation
         double duration = 0.;
         if (edges_collection.data[i].size() > 0) {
           customRelaxThread(buckets, dist, prev, edges_collection, i, duration);
         }
->>>>>>> Stashed changes
       }
     }
     // std::cout<<"Total duration: "<<total_duration<<std::endl;
     // std::cout<<"Operations duration: "<<duration_operations<<std::endl;
-<<<<<<< Updated upstream
 
 #if DEBUG
-=======
->>>>>>> Stashed changes
     int total_length = 0;
     for (size_t i = 0; i < n_threads; i++) {
       total_length += edges_collection.data[i].size();
     }
-<<<<<<< Updated upstream
     std::cout << "Total length: " << total_length << std::endl;
 #endif
-=======
-    // std::cout<<"Total length: "<<total_length<<std::endl;
->>>>>>> Stashed changes
   }
 
   SourceTargetReturn parallelDeltaStepping(int source, int destination) {
@@ -1108,11 +1034,7 @@ public:
   SourceTargetReturn customParallelDeltaStepping(int source, int destination, double force_parallelization) {
     std::vector<int> dist(this->V, INT_MAX);
     std::vector<int> prev(this->V, -1);
-<<<<<<< Updated upstream
-    std::unordered_map<int, std::list<int>> buckets;
-=======
     std::unordered_map<int, std::unordered_map<int, bool>> buckets;
->>>>>>> Stashed changes
     // std::vector<std::mutex> distlocks(this->V); // no need to anymore
     dist[source] = 0;
     buckets[0][source] = true;
@@ -1217,7 +1139,6 @@ int main() {
   c.reset();
   c.replace_if_better(e, 1, 1, dist);
   c.replace_if_better(e3, 2, 1, dist);
-<<<<<<< Updated upstream
   std::cout<<(c.perishable_pointers[1].ptr)->cost<<std::endl;
   std::cout<<(c.perishable_pointers[2].ptr)->cost<<std::endl;
   std::cout<<c.data[0].begin()->vertex<<std::endl;
@@ -1232,21 +1153,6 @@ int main() {
   g.n_threads = 1;
   std::cout << " 1 THREAD" << "\n\n";
   g.compare_algorithms(0, 3, false);
-=======
-  std::cout << (c.perishable_pointers[1].ptr)->cost << std::endl;
-  std::cout << (c.perishable_pointers[2].ptr)->cost << std::endl;
-  std::cout << c.data[0].begin()->vertex << std::endl;
-  std::cout << c.data[1].begin()->vertex << std::endl;
-  std::cout << "?" << std::endl;
-
-  Graph g = Graph::generate_graph_parallel(10000, 0.1, 100, 4, 10);
-  // g.display();
-  std::cout << " 4 THREADS" << "\n\n";
-  g.compare_algorithms(0, 9802, false);
-  g.n_threads = 1;
-  std::cout << " 1 THREAD" << "\n\n";
-  g.compare_algorithms(0, 9082, false);
->>>>>>> Stashed changes
   // std::cout<<" 5 FIVE THREADS"<<std::endl;
   // g.n_threads = 5;
   // g.compare_algorithms(0, 3, false);
