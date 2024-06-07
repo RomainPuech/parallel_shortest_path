@@ -26,6 +26,7 @@ class Graph {
   // Directed weighted graph
   const size_t V;
   std::unordered_set<Edge> *adj;
+  std::vector<std::mutex> adjlocks;
 
 public:
   int delta;
@@ -34,10 +35,14 @@ public:
   Graph(size_t V, int delta, size_t n_threads_) : V(V), delta(delta) {
     adj = new std::unordered_set<Edge>[V];
     n_threads = std::min(n_threads_, (size_t)V);
+    adjlocks = std::vector<std::mutex>(V);
   }
 
   void addEdge(size_t v, size_t w, size_t c) {
     if (v < V && w < V) {
+      // Most functions calls from different threads will be for different v
+      // However, for safety, we still lock it
+      std::lock_guard<std::mutex> lock(adjlocks[v]); // TODO i think we can remove this actually
       adj[v].insert(Edge(v, w, c));
     } else {
       std::cout << "Invalid edge: " << v << " " << w << " " << c << std::endl;
@@ -95,8 +100,8 @@ public:
     }
     Graph g(n_vertices, delt, n_threads);
     std::vector<std::thread> threads(n_threads - 1);
-    size_t block_size = (n_vertices-1) / n_threads;
-    
+    size_t block_size = (n_vertices - 1) / n_threads;
+
     for (size_t i = 0; i < n_threads - 1; i++) {
       threads[i] = std::thread([&g, i, block_size, n_vertices, max_cost]() {
         std::hash<std::thread::id> hasher;
@@ -115,11 +120,11 @@ public:
         }
       });
     }
-    
+
     std::hash<std::thread::id> hasher;
     static thread_local std::mt19937 generator = std::mt19937(clock() + hasher(std::this_thread::get_id()));
     std::uniform_real_distribution<double> distribution(0.0, 1.0);
-    for (size_t it = (n_threads-1)*block_size; it < n_vertices-1; it++) {
+    for (size_t it = (n_threads - 1) * block_size; it < n_vertices - 1; it++) {
       int next = it + 1;
       if (it == 0) {
         next = 2;
@@ -134,11 +139,12 @@ public:
     for (size_t i = 0; i < n_threads - 1; i++) {
       threads[i].join();
     }
-    
+
     return g;
   }
 
   static Graph generate_graph_parallel(size_t n_vertices, double edge_density, int max_cost, size_t n_threads, int delt) {
+    // Any source/destination pair is interesting
     if (n_threads < 1) {
       std::cout << "Invalid number of threads" << std::endl;
       throw "Invalid number of threads";
@@ -182,6 +188,93 @@ public:
         dist[i][e.vertex] = e.cost;
       }
     }*/
+    return g;
+  }
+
+  static Graph generate_network_parallel(size_t n_vertices_components, int n_components, double component_density, double connections_density, int max_cost, int n_threads, int delt) {
+    // Each component will have density component_density
+    // The graph taking components as vertices will have density connections_density
+    // To make interesting paths, pick source 0 and destination > n_vertices_components
+    if (n_threads < 1) {
+      std::cout << "Invalid number of threads" << std::endl;
+      throw "Invalid number of threads";
+    }
+    Graph g(n_vertices_components * n_components, delt, n_threads);
+    std::vector<Graph> components;
+    for (int i = 0; i < n_components; i++) {
+      components.push_back(generate_graph_parallel(n_vertices_components, component_density, max_cost, n_threads, delt));
+    }
+
+    // Add the components to the network
+
+    std::vector<std::thread> threads(n_threads - 1);
+    int block_size = n_components / n_threads;
+    for (int n_th = 0; n_th < n_threads - 1; ++n_th) {
+      threads[n_th] = std::thread([&g, &components, n_th, block_size, n_vertices_components]() {
+        for (int i = n_th * block_size; i < (n_th + 1) * block_size; i++) {
+          for (size_t j = 0; j < n_vertices_components; j++) {
+            for (const Edge e : components[i].adj[j]) {
+              g.addEdge(i * n_vertices_components + j, i * n_vertices_components + e.vertex, e.cost);
+            }
+          }
+        }
+      });
+    }
+
+    for (int i = (n_threads - 1) * block_size; i < n_components; i++) {
+      for (size_t j = 0; j < n_vertices_components; j++) {
+        for (const Edge e : components[i].adj[j]) {
+          g.addEdge(i * n_vertices_components + j, i * n_vertices_components + e.vertex, e.cost);
+        }
+      }
+    }
+
+    for (int n_th = 0; n_th < n_threads - 1; ++n_th) {
+      threads[n_th].join();
+    }
+
+    // Connect the components fully randomly in parallel
+
+    std::vector<std::thread> threads2(n_threads - 1);
+    block_size = n_components / n_threads;
+    for (int n_th = 0; n_th < n_threads - 1; ++n_th) {
+      threads2[n_th] = std::thread([&g, n_th, block_size, n_vertices_components, n_components, connections_density, max_cost]() {
+        std::hash<std::thread::id> hasher;
+        static thread_local std::mt19937 generator = std::mt19937(clock() + hasher(std::this_thread::get_id()));
+        std::uniform_real_distribution<double> distribution(0.0, 1.0);
+        for (int i = n_th * block_size; i < (n_th + 1) * block_size; i++) {
+          for (int j = 0; j < n_components; j++) {
+            // If we add a connection between two components
+            if (i != j && distribution(generator) < connections_density) {
+              // Connect two random vertices from these components
+              int u = i * n_vertices_components + (int)(distribution(generator) * n_vertices_components);
+              int v = j * n_vertices_components + (int)(distribution(generator) * n_vertices_components);
+              g.addEdge(u, v, (int)(distribution(generator) * max_cost));
+            }
+          }
+        }
+      });
+    }
+    
+    std::hash<std::thread::id> hasher;
+    static thread_local std::mt19937 generator = std::mt19937(clock() + hasher(std::this_thread::get_id()));
+    std::uniform_real_distribution<double> distribution(0.0, 1.0);
+    for (int i = (n_threads - 1) * block_size; i < n_components; i++) {
+      for (int j = 0; j < n_components; j++) {
+        // If we add a connection between two components
+        if (i != j && distribution(generator) < connections_density) {
+          // Connect two random vertices from these components
+          int u = i * n_vertices_components + (int)(distribution(generator) * n_vertices_components);
+          int v = j * n_vertices_components + (int)(distribution(generator) * n_vertices_components);
+          g.addEdge(u, v, (int)(distribution(generator) * max_cost));
+        }
+      }
+    }
+
+    for (int n_th = 0; n_th < n_threads - 1; ++n_th) {
+      threads2[n_th].join();
+    }
+    
     return g;
   }
 
@@ -1033,15 +1126,15 @@ int main() {
   */
 
   // "V, density, max_cost, n_threads, delta"
-  Graph g = Graph::generate_path_parallel(1000, 100, 4, 1);
+  Graph g = Graph::generate_network_parallel(100, 100, 0.8, 0.1, 100, 4, 1);
   // g.save_to_file("graph.txt");
   // Graph g = Graph(1000,1,4);
   // g.load_from_file("graph.txt");
   std::cout << " 4 THREADS" << "\n\n";
-  g.compare_algorithms(0, 1, false);
+  g.compare_algorithms(0, 101, false);
   g.n_threads = 1;
   std::cout << " 1 THREAD" << "\n\n";
-  g.compare_algorithms(0, 1, false);
+  g.compare_algorithms(0, 101, false);
   // std::cout<<" 5 FIVE THREADS"<<std::endl;
   // g.n_threads = 5;
   // g.compare_algorithms(0, 3, false);
