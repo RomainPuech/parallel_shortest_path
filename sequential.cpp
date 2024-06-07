@@ -26,7 +26,6 @@ class Graph {
   // Directed weighted graph
   const size_t V;
   std::unordered_set<Edge> *adj;
-  std::vector<std::mutex> adjlocks;
 
 public:
   int delta;
@@ -35,14 +34,12 @@ public:
   Graph(size_t V, int delta, size_t n_threads_) : V(V), delta(delta) {
     adj = new std::unordered_set<Edge>[V];
     n_threads = std::min(n_threads_, (size_t)V);
-    adjlocks = std::vector<std::mutex>(V);
   }
 
   void addEdge(size_t v, size_t w, size_t c) {
     if (v < V && w < V) {
-      // Most functions calls from different threads will be for different v
-      // However, for safety, we still lock it
-      std::lock_guard<std::mutex> lock(adjlocks[v]); // TODO i think we can remove this actually
+      // Any graph generation function in parallel calls this with disjoint set of v from each thread
+      // Thus we need no lock here
       adj[v].insert(Edge(v, w, c));
     } else {
       std::cout << "Invalid edge: " << v << " " << w << " " << c << std::endl;
@@ -94,6 +91,7 @@ public:
 
   static Graph generate_path_parallel(size_t n_vertices, int max_cost, size_t n_threads, int delt) {
     // Creates a path from 0 to 1 with n_vertices vertices
+    // addEdge is thread_safe here
     if (n_threads < 1) {
       std::cout << "Invalid number of threads" << std::endl;
       throw "Invalid number of threads";
@@ -145,6 +143,7 @@ public:
 
   static Graph generate_graph_parallel(size_t n_vertices, double edge_density, int max_cost, size_t n_threads, int delt) {
     // Any source/destination pair is interesting
+    // addEdge is thread_safe here
     if (n_threads < 1) {
       std::cout << "Invalid number of threads" << std::endl;
       throw "Invalid number of threads";
@@ -195,6 +194,7 @@ public:
     // Each component will have density component_density
     // The graph taking components as vertices will have density connections_density
     // To make interesting paths, pick source 0 and destination > n_vertices_components
+    // addEdge is thread_safe here
     if (n_threads < 1) {
       std::cout << "Invalid number of threads" << std::endl;
       throw "Invalid number of threads";
