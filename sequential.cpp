@@ -40,6 +40,7 @@ public:
     if (v < V && w < V) {
       adj[v].insert(Edge(v, w, c));
     } else {
+      std::cout << "Invalid edge: " << v << " " << w << " " << c << std::endl;
       throw "Invalid vertex";
     }
   }
@@ -70,11 +71,13 @@ public:
     std::ifstream file;
     file.open(filename);
     if (!file.is_open()) {
+      std::cout << "File not found: " << filename << std::endl;
       throw "File not found";
     }
     size_t V_, delta_;
     file >> V_ >> delta_;
     if (V_ != V || delta_ != delta) {
+      std::cout << "Incompatible graph" << std::endl;
       throw "Incompatible graph";
     }
     size_t v, w, c;
@@ -84,8 +87,60 @@ public:
     file.close();
   }
 
+  static Graph generate_path_parallel(size_t n_vertices, int max_cost, size_t n_threads, int delt) {
+    // Creates a path from 0 to 1 with n_vertices vertices
+    if (n_threads < 1) {
+      std::cout << "Invalid number of threads" << std::endl;
+      throw "Invalid number of threads";
+    }
+    Graph g(n_vertices, delt, n_threads);
+    std::vector<std::thread> threads(n_threads - 1);
+    size_t block_size = (n_vertices-1) / n_threads;
+    
+    for (size_t i = 0; i < n_threads - 1; i++) {
+      threads[i] = std::thread([&g, i, block_size, n_vertices, max_cost]() {
+        std::hash<std::thread::id> hasher;
+        static thread_local std::mt19937 generator = std::mt19937(clock() + hasher(std::this_thread::get_id()));
+        std::uniform_real_distribution<double> distribution(0.0, 1.0);
+        for (size_t it = i * block_size; it < (i + 1) * block_size; it++) {
+          int next = it + 1;
+          if (it == 0) {
+            next = 2;
+          }
+          if (it != 1) {
+            g.addEdge(it, next, (int)(distribution(generator) * max_cost));
+          } else {
+            g.addEdge(n_vertices - 1, it, (int)(distribution(generator) * max_cost));
+          }
+        }
+      });
+    }
+    
+    std::hash<std::thread::id> hasher;
+    static thread_local std::mt19937 generator = std::mt19937(clock() + hasher(std::this_thread::get_id()));
+    std::uniform_real_distribution<double> distribution(0.0, 1.0);
+    for (size_t it = (n_threads-1)*block_size; it < n_vertices-1; it++) {
+      int next = it + 1;
+      if (it == 0) {
+        next = 2;
+      }
+      if (it != 1) {
+        g.addEdge(it, next, (int)(distribution(generator) * max_cost));
+      } else {
+        g.addEdge(n_vertices - 1, it, (int)(distribution(generator) * max_cost));
+      }
+    }
+
+    for (size_t i = 0; i < n_threads - 1; i++) {
+      threads[i].join();
+    }
+    
+    return g;
+  }
+
   static Graph generate_graph_parallel(size_t n_vertices, double edge_density, int max_cost, size_t n_threads, int delt) {
     if (n_threads < 1) {
+      std::cout << "Invalid number of threads" << std::endl;
       throw "Invalid number of threads";
     }
     Graph g(n_vertices, delt, n_threads);
@@ -113,20 +168,20 @@ public:
     for (size_t it = (n_threads - 1) * block_size; it < n_vertices; it++) {
       for (size_t j = 0; j < n_vertices; j++) {
         if (it != j && distribution(generator) < edge_density) {
-          g.addEdge(it, j, (size_t)(distribution(generator) * max_cost));
+          g.addEdge(it, j, (int)(distribution(generator) * max_cost));
         }
       }
     }
     for (size_t i = 0; i < n_threads - 1; i++) {
       threads[i].join();
     }
-    // make matrix out of adjacency of g
+    /* make matrix out of adjacency of g
     std::vector<std::vector<int>> dist(n_vertices, std::vector<int>(n_vertices, -1));
     for (size_t i = 0; i < n_vertices; i++) {
       for (const Edge e : g.adj[i]) {
         dist[i][e.vertex] = e.cost;
       }
-    }
+    }*/
     return g;
   }
 
@@ -250,6 +305,7 @@ public:
 
   AllTerminalReturn SourceAll_To_AllTerminalParallel(SourceAllReturn (Graph::*F)(int, int)) {
     if (n_threads < 1) {
+      std::cout << "Invalid number of threads" << std::endl;
       throw "Invalid number of threads";
     }
     std::vector<std::vector<int>> distances(V);
@@ -510,6 +566,7 @@ public:
     // Check the diagonal
     for (size_t i = 0; i < V; i++) {
       if (dist[i][i] < 0) {
+        std::cout << "Negative cycle detected" << std::endl;
         throw "Negative cycle detected";
       }
     }
@@ -976,15 +1033,15 @@ int main() {
   */
 
   // "V, density, max_cost, n_threads, delta"
-  //Graph g = Graph::generate_graph_parallel(1000, 0.6, 100, 4, 1);
-  //g.save_to_file("graph.txt");
-  Graph g = Graph(1000,1,4);
-  g.load_from_file("graph.txt");
+  Graph g = Graph::generate_path_parallel(1000, 100, 4, 1);
+  // g.save_to_file("graph.txt");
+  // Graph g = Graph(1000,1,4);
+  // g.load_from_file("graph.txt");
   std::cout << " 4 THREADS" << "\n\n";
-  g.compare_algorithms(0, 3, false);
+  g.compare_algorithms(0, 1, false);
   g.n_threads = 1;
   std::cout << " 1 THREAD" << "\n\n";
-  g.compare_algorithms(0, 3, false);
+  g.compare_algorithms(0, 1, false);
   // std::cout<<" 5 FIVE THREADS"<<std::endl;
   // g.n_threads = 5;
   // g.compare_algorithms(0, 3, false);
