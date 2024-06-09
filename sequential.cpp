@@ -281,8 +281,8 @@ public:
   }
 
   void compare_algorithms(int s, int d, bool debug = true) {
-    std::vector<std::string> names_ST{"DijkstraSourceTarget", /* "Delta",*/ "CustomDeltaNoPara", "CustomDeltaPara"};                                                                                                      //, "UNWEIGHTED BFS_SourceTarget", "UNWEIGHTED DFS_SourceTarget"};
-    std::vector<SourceTargetReturn (Graph::*)(int, int)> ST_Funcs{&Graph::DijkstraSourceTarget, /*&Graph::parallelDeltaStepping,*/ &Graph::customParallelDeltaSteppingNoForce, &Graph::customParallelDeltaSteppingForce}; //, &Graph::BFS_ST, &Graph::DFS_ST};
+    std::vector<std::string> names_ST{"DijkstraSourceTarget","Delta", "DeltaNoPara", "CustomDeltaPara"};                                                                                                      //, "UNWEIGHTED BFS_SourceTarget", "UNWEIGHTED DFS_SourceTarget"};
+    std::vector<SourceTargetReturn (Graph::*)(int, int)> ST_Funcs{&Graph::DijkstraSourceTarget, &Graph::deltaStepping, &Graph::parallelDeltaStepping, &Graph::customParallelDeltaSteppingForce}; //, &Graph::BFS_ST, &Graph::DFS_ST};
     for (size_t i = 0; i < names_ST.size(); i++) {
       std::cout << "   " << names_ST[i] << ": " << std::flush;
       auto start = high_resolution_clock::now();
@@ -701,7 +701,7 @@ public:
               prev[e.vertex] = u;
               int bucket_index = new_dist / delta;
               if (bucket_index == i) {
-                bucket.push_back(e.vertex); // should remove it from old bucket as well...
+                bucket.push_back(e.vertex); // /!\ TODO should remove it from old bucket as well...
               } else if (buckets.find(bucket_index) == buckets.end()) {
                 buckets[bucket_index] = std::list<int>({e.vertex});
               } else {
@@ -1106,7 +1106,37 @@ public:
   }
 };
 
-int main() {
+int main(int argc, char *argv[]) {
+  // process input
+  int nodes = 1000;
+  double density = 0.1;
+  int max_cost = 10;
+  int n_threads = 1;
+  int delta = 1;
+  bool save = true;
+  bool load_previous = false;
+
+  if (argc > 1) {
+    nodes = std::stoi(argv[1]);
+  }
+  if (argc > 2) {
+    density = std::stod(argv[2]);
+  }
+  if (argc > 3) {
+    max_cost = std::stoi(argv[3]);
+  }
+  if (argc > 4) {
+    n_threads = std::stoi(argv[4]);
+  }
+  if (argc > 5) {
+    delta = std::stoi(argv[5]);
+  }
+  if (argc > 6) {
+    save = std::stoi(argv[6]);
+  }
+  if (argc > 7) {
+    load_previous = std::stoi(argv[7]);
+  }
   // test the ll_collection
   /*
   std::vector<int> dist(10, 10);
@@ -1133,6 +1163,7 @@ int main() {
   */
 
   // "V, density, max_cost, n_threads, delta"
+<<<<<<< Updated upstream
   Graph g = Graph::generate_network_parallel(100, 100, 0.8, 0.1, 100, 4, 1);
   g.save_to_file("graph.txt");
   // Graph g = Graph(1000,1,4);
@@ -1268,6 +1299,12 @@ int main() {
   }
 
   }
+=======
+  Graph g = Graph::generate_graph_parallel(nodes, density, max_cost, n_threads, delta);
+  if(load_previous) g.load_from_file("graph.txt");
+  if (save) g.save_to_file("graph.txt");
+  g.compare_algorithms(0, nodes-1, false);
+>>>>>>> Stashed changes
   return 0;
 
 }
