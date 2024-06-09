@@ -54,7 +54,8 @@ public:
   }
 
   bool replace_if_better(T element, int index, int current_tag, std::vector<int> &dist) {
-    if ((perishable_pointers[index].tag != current_tag) || ((perishable_pointers[index].ptr)->cost + dist[(perishable_pointers[index].ptr)->from] < dist[(perishable_pointers[index].ptr)->vertex])) {
+    int candidate_dist = dist[element.from]+element.cost;
+    if (( candidate_dist < dist[element.vertex]) and ((perishable_pointers[index].tag != current_tag) || (candidate_dist <  dist[(perishable_pointers[index].ptr)->from] + (perishable_pointers[index].ptr)->cost   ))) {
       // take a lock.
       // no need to lock distance as it is not modified in this phase
       V_locks[index].lock();

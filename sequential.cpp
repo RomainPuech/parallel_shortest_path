@@ -1,5 +1,5 @@
-#include <chrono>
 #include <algorithm>
+#include <chrono>
 #include <fstream>
 #include <iostream>
 #include <limits>
@@ -20,8 +20,8 @@ using namespace std::chrono;
 
 #pragma GCC diagnostic ignored "-Wvla"
 
-#define DEBUG 0
-
+#define DEBUG 1
+#define ANALYSIS 0
 
 class Graph {
   // Directed weighted graph
@@ -71,6 +71,7 @@ public:
   }
 
   void load_from_file(std::string filename) {
+    adj = new std::unordered_set<Edge>[V];
     std::ifstream file;
     file.open(filename);
     if (!file.is_open()) {
@@ -257,7 +258,7 @@ public:
         }
       });
     }
-    
+
     std::hash<std::thread::id> hasher;
     static thread_local std::mt19937 generator = std::mt19937(clock() + hasher(std::this_thread::get_id()));
     std::uniform_real_distribution<double> distribution(0.0, 1.0);
@@ -276,12 +277,12 @@ public:
     for (int n_th = 0; n_th < n_threads - 1; ++n_th) {
       threads2[n_th].join();
     }
-    
+
     return g;
   }
 
   void compare_algorithms(int s, int d, bool debug = true) {
-    std::vector<std::string> names_ST{"DijkstraSourceTarget","Delta", "DeltaNoPara", "CustomDeltaPara"};                                                                                                      //, "UNWEIGHTED BFS_SourceTarget", "UNWEIGHTED DFS_SourceTarget"};
+    std::vector<std::string> names_ST{"DijkstraSourceTarget", "Delta", "DeltaNoPara", "CustomDeltaPara"};                                                                                        //, "UNWEIGHTED BFS_SourceTarget", "UNWEIGHTED DFS_SourceTarget"};
     std::vector<SourceTargetReturn (Graph::*)(int, int)> ST_Funcs{&Graph::DijkstraSourceTarget, &Graph::deltaStepping, &Graph::parallelDeltaStepping, &Graph::customParallelDeltaSteppingForce}; //, &Graph::BFS_ST, &Graph::DFS_ST};
     for (size_t i = 0; i < names_ST.size(); i++) {
       std::cout << "   " << names_ST[i] << ": " << std::flush;
@@ -674,10 +675,10 @@ public:
   SourceTargetReturn deltaStepping(int source, int destination) {
     std::vector<int> dist(this->V, std::numeric_limits<int>::max());
     std::vector<int> prev(this->V, -1);
-    std::unordered_map<int, std::list<int>> buckets;
+    std::unordered_map<int, std::unordered_set<int>> buckets;
 
     dist[source] = 0;
-    buckets[0].push_back(source);
+    buckets[0].insert(source);
 
     while (!buckets.empty()) {
       int i = 0;
@@ -685,27 +686,33 @@ public:
         ++i;
       }
 
-      std::list<int> bucket = buckets[i];
+      std::unordered_set<int> bucket = buckets[i];
       buckets.erase(i);
       std::list<Edge> heavy_edges;
 
       // Process light edges
       while (!bucket.empty()) {
-        int u = bucket.front();
-        bucket.pop_front();
+        auto it = bucket.begin();
+        int u = *it;
+        bucket.erase(it);
         for (const Edge e : adj[u]) {
           if (e.cost <= delta) {
             int new_dist = dist[u] + e.cost;
             if (new_dist < dist[e.vertex]) {
+              if (dist[e.vertex] != std::numeric_limits<int>::max()) {
+                int old_bucket_index = dist[e.vertex] / delta;
+                if (old_bucket_index != i) { // really?
+                  buckets[old_bucket_index].erase(e.vertex);
+                  // buckets[old_bucket_index][e.vertex] = false;
+                }
+              }
               dist[e.vertex] = new_dist;
               prev[e.vertex] = u;
               int bucket_index = new_dist / delta;
-              if (bucket_index == i) {
-                bucket.push_back(e.vertex); // /!\ TODO should remove it from old bucket as well...
-              } else if (buckets.find(bucket_index) == buckets.end()) {
-                buckets[bucket_index] = std::list<int>({e.vertex});
+              if (buckets.find(bucket_index) == buckets.end()) {
+                buckets[bucket_index] = std::unordered_set<int>({e.vertex});
               } else {
-                buckets[bucket_index].push_back(e.vertex);
+                buckets[bucket_index].insert(e.vertex);
               }
             }
           } else {
@@ -717,13 +724,19 @@ public:
       for (const Edge e : heavy_edges) {
         int new_dist = dist[e.from] + e.cost;
         if (new_dist < dist[e.vertex]) {
+          if (dist[e.vertex] != std::numeric_limits<int>::max()) {
+            int old_bucket_index = dist[e.vertex] / delta;
+            if (old_bucket_index != i) { // really?
+              buckets[old_bucket_index].erase(e.vertex);
+            }
+          }
           dist[e.vertex] = new_dist;
           prev[e.vertex] = e.from;
           int bucket_index = new_dist / delta;
           if (buckets.find(bucket_index) == buckets.end()) {
-            buckets[bucket_index] = std::list<int>({e.vertex});
+            buckets[bucket_index] = std::unordered_set<int>({e.vertex});
           } else {
-            buckets[bucket_index].push_back(e.vertex);
+            buckets[bucket_index].insert(e.vertex);
           }
         }
       }
@@ -795,9 +808,6 @@ public:
                          ll_collection<Edge> &edges_collection,
                          int thread_id,
                          double &duration) {
-#if DEBUG
-    std::cout << "Inside relaxThread" << std::endl;
-#endif
 
     int operations = 0;
     auto start = high_resolution_clock::now();
@@ -874,7 +884,9 @@ public:
     // std::cout<<"Inside customParallelRelax"<<std::endl;
     std::vector<std::thread> threads(n_threads - 1);
     if (force_parallelization and edges_collection.data[0].size() > 10000) {
-      // std::cout<<"Parallelizing relax operation"<<std::endl;
+#if DEBUG
+      std::cout << "Parallelizing relax operation" << std::endl;
+#endif
       double total_duration = 0.;
       double durations[n_threads];
       auto start = high_resolution_clock::now();
@@ -935,7 +947,7 @@ public:
     for (size_t i = 0; i < n_threads; i++) {
       total_length += edges_collection.data[i].size();
     }
-    std::cout << "Total length: " << total_length << std::endl;
+    // std::cout << "Total length: " << total_length << std::endl;
 #endif
   }
 
@@ -998,10 +1010,10 @@ public:
       duration_heavy += (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
     }
 
-    #if DEBUG
+#if DEBUG
     std::cout << "Exploration time: " << duration_exploration << " milliseconds. \n";
     std::cout << "Heavy edges time: " << duration_heavy << " milliseconds. \n";
-    #endif
+#endif
 
     // Make the return struct
     std::vector<int> rpath;
@@ -1055,7 +1067,7 @@ public:
             continue;
           }
           for (const Edge e : adj[u]) {
-            if (e.cost <= delta) {
+            if (e.cost < delta) {
               light_edges.replace_if_better(e, e.vertex, iteration_light, dist);
             } else {
               heavy_edges.replace_if_better(e, e.vertex, iteration_light, dist);
@@ -1081,10 +1093,10 @@ public:
       iteration_heavy++;
     }
 
-    #if DEBUG
+#if DEBUG
     std::cout << "Exploration time: " << duration_exploration << " milliseconds. \n";
     std::cout << "Heavy edges time: " << duration_heavy << " milliseconds. \n";
-    #endif
+#endif
 
     // Make the return struct
     std::vector<int> rpath;
@@ -1108,13 +1120,13 @@ public:
 
 int main(int argc, char *argv[]) {
   // process input
-  int nodes = 1000;
+  int nodes = 20;
   double density = 0.1;
   int max_cost = 10;
-  int n_threads = 1;
-  int delta = 1;
-  bool save = true;
+  int n_threads = 8;
+  int delta = 4;
   bool load_previous = false;
+  bool save = true;
 
   if (argc > 1) {
     nodes = std::stoi(argv[1]);
@@ -1132,51 +1144,29 @@ int main(int argc, char *argv[]) {
     delta = std::stoi(argv[5]);
   }
   if (argc > 6) {
-    save = std::stoi(argv[6]);
-  }
-  if (argc > 7) {
     load_previous = std::stoi(argv[7]);
   }
-  // test the ll_collection
-  /*
-  std::vector<int> dist(10, 10);
-  Edge e(0, 1, 2);
-  Edge e3(0, 2, 3);
-  Edge e2(0, 2, 1);
-  ll_collection<Edge> c(10, 2);
-  c.replace_if_better(e, 1, 0, dist);
-  c.replace_if_better(e2, 2, 0, dist);
-  c.replace_if_better(e3, 2, 0, dist);
-  std::cout << (c.perishable_pointers[1].ptr)->cost << std::endl;
-  std::cout << (c.perishable_pointers[2].ptr)->cost << std::endl;
-  std::cout << c.data[0].begin()->vertex << std::endl;
-  std::cout << c.data[1].begin()->vertex << std::endl;
-  std::cout << "?" << std::endl;
-  c.reset();
-  c.replace_if_better(e, 1, 1, dist);
-  c.replace_if_better(e3, 2, 1, dist);
-  std::cout<<(c.perishable_pointers[1].ptr)->cost<<std::endl;
-  std::cout<<(c.perishable_pointers[2].ptr)->cost<<std::endl;
-  std::cout<<c.data[0].begin()->vertex<<std::endl;
-  std::cout<<c.data[1].begin()->vertex<<std::endl;
-  std::cout<<"?"<<std::endl;
-  */
+  if (argc > 7) {
+    save = std::stoi(argv[8]);
+  }
 
   // "V, density, max_cost, n_threads, delta"
-<<<<<<< Updated upstream
-  Graph g = Graph::generate_network_parallel(100, 100, 0.8, 0.1, 100, 4, 1);
-  g.save_to_file("graph.txt");
-  // Graph g = Graph(1000,1,4);
-  // g.load_from_file("graph.txt");
-  // std::cout << " 4 THREADS" << "\n\n";
-  // g.compare_algorithms(0, 101, false);
-  // g.n_threads = 1;
-  // std::cout << " 1 THREAD" << "\n\n";
-  // g.compare_algorithms(0, 101, false);
-  // std::cout<<" 5 FIVE THREADS"<<std::endl;
-  // g.n_threads = 5;
-  // g.compare_algorithms(0, 3, false);
+  // int res1 = 0;
+  // int res2 = 0;
+  // while (res1 == res2) {
+  //   Graph g = Graph::generate_graph_parallel(nodes, density, max_cost, n_threads, delta); // Graph::generate_network_parallel(20, 1, 0.15, 0.1, 10, 1, 3);
+  //   g.save_to_file("graph.txt");
+  //   res1 = g.customParallelDeltaStepping(0, nodes - 1, true).distance[nodes - 1];
+  //   res2 = g.DijkstraSourceTarget(0, nodes - 1).distance[nodes - 1];
+  // }
+  // std::cout << "Done: " << res2 << res1 << std::endl;
 
+  Graph g = Graph(nodes, 4, 1);
+  g.load_from_file("graph.txt");
+  g.display();
+  g.compare_algorithms(0, nodes - 1, false);
+
+#if ANALYSIS
   ////////////////////////////////////////////
   //          TIMING                        //
   ////////////////////////////////////////////
@@ -1190,7 +1180,7 @@ int main(int argc, char *argv[]) {
 
   // array of thread_numners
   std::vector<size_t> n_threads_vect = {2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25}; // Do not include 1 as is just sequential
-  
+
   // array of deltas
   std::vector<int> deltas = {1, 2, 3, 4, 5, 6, 7, 8};
 
@@ -1231,80 +1221,72 @@ int main(int argc, char *argv[]) {
     for (size_t graph_size : graph_sizes) {
       for (double density : densities) {
 
-            std::cout << "Iteration " << count++ << " of " << graph_sizes.size() * densities.size() << std::endl;
-            double time = 0;
-            size_t n_threads = 4;
-            int delta = 1;
-            Graph g = Graph::generate_network_parallel(graph_size, graph_size, density, 0.1, 100, n_threads, delta);
+        std::cout << "Iteration " << count++ << " of " << graph_sizes.size() * densities.size() << std::endl;
+        double time = 0;
+        size_t n_threads = 4;
+        int delta = 1;
+        Graph g = Graph::generate_network_parallel(graph_size, graph_size, density, 0.1, 100, n_threads, delta);
 
-            // Sequential ALGOS
-            std::cout << "Starting sequential algorithms for graph size " << graph_size << " and density " << density << std::endl;
-            // Delta Stepping
-            for (int delta : deltas) {
-              time = 0;
-              g.delta = delta;
-              auto start = high_resolution_clock::now();
-              g.deltaStepping(0, 101);
-              auto stop = high_resolution_clock::now();
-              time += (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
-              file << "DeltaStepping," << false << "," << delta << "," << graph_size << "," << density << "," << 1 << "," << time << std::endl;
-            }
+        // Sequential ALGOS
+        std::cout << "Starting sequential algorithms for graph size " << graph_size << " and density " << density << std::endl;
+        // Delta Stepping
+        for (int delta : deltas) {
+          time = 0;
+          g.delta = delta;
+          auto start = high_resolution_clock::now();
+          g.deltaStepping(0, 101);
+          auto stop = high_resolution_clock::now();
+          time += (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
+          file << "DeltaStepping," << false << "," << delta << "," << graph_size << "," << density << "," << 1 << "," << time << std::endl;
+        }
 
-            // Dijkstra
+        // Dijkstra
+        time = 0;
+        auto start = high_resolution_clock::now();
+        g.DijkstraSourceTarget(0, 101);
+        auto stop = high_resolution_clock::now();
+        time += (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
+        file << "DijkstraSequential," << false << "," << -1 << "," << graph_size << "," << density << "," << 1 << "," << time << std::endl;
+
+        // Floyd Warshall
+        // std::cout << "Floyd Warshal: .";
+        // time = 0;
+        // start = high_resolution_clock::now();
+        // g.Floyd_Warshall_Sequential();
+        // stop = high_resolution_clock::now();
+        // time += (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
+        // file << "FloydWarshallSequential" << graph_size << "," << density << "," << 1 << "," << "Floyd_Warshall" << "," << time << std::endl;
+        // std::cout << std::endl;
+
+        // Parallel ALGOS
+        std::cout << "Starting parallel algorithms for graph size " << graph_size << " and density " << density << std::endl;
+        for (size_t n_threads : n_threads_vect) {
+          g.n_threads = n_threads;
+
+          // Delta Stepping
+          for (int delta : deltas) {
             time = 0;
+            g.delta = delta;
             auto start = high_resolution_clock::now();
-            g.DijkstraSourceTarget(0, 101);
+            g.customParallelDeltaStepping(0, 101, false);
             auto stop = high_resolution_clock::now();
             time += (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
-            file << "DijkstraSequential," << false << "," << -1 << "," << graph_size << "," << density << "," << 1 << "," << time << std::endl;
+            file << "CustomParallelDeltaStepping," << (n_threads > 1) << "," << delta << "," << graph_size << "," << density << "," << n_threads << "," << time << std::endl;
+          }
 
-            // Floyd Warshall
-            // std::cout << "Floyd Warshal: .";
-            // time = 0;
-            // start = high_resolution_clock::now();
-            // g.Floyd_Warshall_Sequential();
-            // stop = high_resolution_clock::now();
-            // time += (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
-            // file << "FloydWarshallSequential" << graph_size << "," << density << "," << 1 << "," << "Floyd_Warshall" << "," << time << std::endl;
-            // std::cout << std::endl;
-
-
-            // Parallel ALGOS
-            std::cout << "Starting parallel algorithms for graph size " << graph_size << " and density " << density << std::endl;
-            for (size_t n_threads : n_threads_vect) {
-              g.n_threads = n_threads;
-
-              // Delta Stepping
-              for (int delta : deltas) {
-                time = 0;
-                g.delta = delta;
-                auto start = high_resolution_clock::now();
-                g.customParallelDeltaStepping(0, 101, false);
-                auto stop = high_resolution_clock::now();
-                time += (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
-                file << "CustomParallelDeltaStepping," << (n_threads > 1) << "," << delta << "," << graph_size << "," << density << "," << n_threads << "," << time << std::endl;
-              }
-
-              // Floyd Warshall
-              // std::cout << "Floyd Warshal: .";
-              // time = 0;
-              // start = high_resolution_clock::now();
-              // g.Floyd_Warshall_Parallel();
-              // stop = high_resolution_clock::now();
-              // time += (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
-              // file << "FloydWarshallParallel," << (n_threads > 1) << "," << -1 << "," << graph_size << "," << density << "," << n_threads << "," << time << std::endl;
-
-            }
+          // Floyd Warshall
+          // std::cout << "Floyd Warshal: .";
+          // time = 0;
+          // start = high_resolution_clock::now();
+          // g.Floyd_Warshall_Parallel();
+          // stop = high_resolution_clock::now();
+          // time += (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
+          // file << "FloydWarshallParallel," << (n_threads > 1) << "," << -1 << "," << graph_size << "," << density << "," << n_threads << "," << time << std::endl;
+        }
+      }
     }
   }
 
-  }
-=======
-  Graph g = Graph::generate_graph_parallel(nodes, density, max_cost, n_threads, delta);
-  if(load_previous) g.load_from_file("graph.txt");
-  if (save) g.save_to_file("graph.txt");
-  g.compare_algorithms(0, nodes-1, false);
->>>>>>> Stashed changes
+#endif
   return 0;
-
 }

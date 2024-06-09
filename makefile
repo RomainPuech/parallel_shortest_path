@@ -8,10 +8,10 @@ all: targets
 debug: sequential_debug
 
 sequential_debug: sequential.cpp
-	$(CC) $(CFLAGSDEBUG) -o sequential sequential.cpp utils.cpp
+	$(CC) $(CFLAGSDEBUG) -o s sequential.cpp utils.cpp
 
 sequential: sequential.cpp
-	$(CC) $(CFLAGS) -o sequential sequential.cpp utils.cpp
+	$(CC) $(CFLAGS) -o s sequential.cpp utils.cpp
 
 clean:
-	rm -f sequential
+	rm -f s
