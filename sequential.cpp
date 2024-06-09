@@ -10,7 +10,7 @@
 #include <unordered_set>
 #include <vector>
 using namespace std::chrono;
-
+#include <limits.h>
 #include <barrier>
 #include <mutex>
 #include <random>
@@ -20,8 +20,8 @@ using namespace std::chrono;
 
 #pragma GCC diagnostic ignored "-Wvla"
 
-#define DEBUG 1
-#define ANALYSIS 0
+#define DEBUG 0
+#define ANALYSIS 1
 
 class Graph {
   // Directed weighted graph
@@ -1120,6 +1120,7 @@ public:
 
 int main(int argc, char *argv[]) {
   // process input
+  #if DEBUG
   int nodes = 20;
   double density = 0.1;
   int max_cost = 10;
@@ -1165,8 +1166,9 @@ int main(int argc, char *argv[]) {
   g.load_from_file("graph.txt");
   g.display();
   g.compare_algorithms(0, nodes - 1, false);
+  #endif
 
-#if ANALYSIS
+  #if ANALYSIS
   ////////////////////////////////////////////
   //          TIMING                        //
   ////////////////////////////////////////////
@@ -1175,11 +1177,12 @@ int main(int argc, char *argv[]) {
   const size_t n_repeat = 5;
 
   // array of graph sizes and density
-  std::vector<size_t> graph_sizes = {200, 500, 1000, 5000, 10000, 50000, 100000};
-  std::vector<double> densities = {0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9};
+  std::vector<size_t> graph_sizes = {500, 1000, 5000, 10000, 50000, 100000};
+
+  std::vector<double> densities = {0.3, 0.5, 0.7};
 
   // array of thread_numners
-  std::vector<size_t> n_threads_vect = {2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25}; // Do not include 1 as is just sequential
+  std::vector<size_t> n_threads_vect = {2, 4, 8, 12, 16, 20, 24, 25};
 
   // array of deltas
   std::vector<int> deltas = {1, 2, 3, 4, 5, 6, 7, 8};
@@ -1189,24 +1192,24 @@ int main(int argc, char *argv[]) {
   std::cout << "Repeating each experiment " << n_repeat << " times" << std::endl;
   std::cout << "Graph sizes: ";
   for (size_t i = 0; i < graph_sizes.size(); i++) {
-    std::cout << graph_sizes[i] << " ";
+     std::cout << graph_sizes[i] << " ";
   }
   std::cout << std::endl;
   std::cout << "Densities: ";
   for (size_t i = 0; i < densities.size(); i++) {
-    std::cout << densities[i] << " ";
+     std::cout << densities[i] << " ";
   }
   std::cout << std::endl;
   std::cout << "Total number of graphs: " << graph_sizes.size() * densities.size() << std::endl;
   std::cout << "Number of threads for parallel algorithms: ";
   for (size_t i = 0; i < n_threads_vect.size(); i++) {
-    std::cout << n_threads_vect[i] << " ";
+     std::cout << n_threads_vect[i] << " ";
   }
   std::cout << std::endl;
 
   // create a file to store the results
   std::ofstream file;
-  const std::string filename = "/data/results.csv";
+  static const std::string filename = "results.csv";
   file.open(filename);
 
   std::cout << "Storing results in " << filename << std::endl;
@@ -1216,77 +1219,78 @@ int main(int argc, char *argv[]) {
 
   size_t count = 1;
   for (size_t i = 0; i < n_repeat; i++) {
-    std::cout << "Repetition " << i + 1 << " of " << n_repeat << std::endl;
-    // Loop over the graph sizes
-    for (size_t graph_size : graph_sizes) {
-      for (double density : densities) {
+     std::cout << "Repetition " << i + 1 << " of " << n_repeat << std::endl;
+     // Loop over the graph sizes
+     for (size_t graph_size : graph_sizes) {
+        for (double density : densities) {
 
-        std::cout << "Iteration " << count++ << " of " << graph_sizes.size() * densities.size() << std::endl;
-        double time = 0;
-        size_t n_threads = 4;
-        int delta = 1;
-        Graph g = Graph::generate_network_parallel(graph_size, graph_size, density, 0.1, 100, n_threads, delta);
+           std::cout << "Iteration " << count++ << " of " << graph_sizes.size() * densities.size() * n_repeat << std::endl;
+           double time = 0;
+           size_t n_threads = 4;
+           int delta = 1;
 
-        // Sequential ALGOS
-        std::cout << "Starting sequential algorithms for graph size " << graph_size << " and density " << density << std::endl;
-        // Delta Stepping
-        for (int delta : deltas) {
-          time = 0;
-          g.delta = delta;
-          auto start = high_resolution_clock::now();
-          g.deltaStepping(0, 101);
-          auto stop = high_resolution_clock::now();
-          time += (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
-          file << "DeltaStepping," << false << "," << delta << "," << graph_size << "," << density << "," << 1 << "," << time << std::endl;
+           // Graph g = Graph::generate_graph_parallel(graph_size, density, 100, n_threads, delta);
+           Graph g = Graph::generate_graph_parallel(graph_size, density, 100, n_threads, delta);
+
+           // Sequential ALGOS
+           std::cout << "Starting sequential algorithms for graph size " << graph_size << " and density " << density << std::endl;
+           // Delta Stepping
+           for (int delta : deltas) {
+              time = 0;
+              g.delta = delta;
+              auto start = high_resolution_clock::now();
+              g.deltaStepping(0, 101);
+              auto stop = high_resolution_clock::now();
+              time += (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
+              file << "DeltaStepping," << false << "," << delta << "," << graph_size << "," << density << "," << 1 << "," << time << std::endl;
+           }
+
+           // Dijkstra
+           time = 0;
+           auto start = high_resolution_clock::now();
+           g.DijkstraSourceAll(0, 101);
+           auto stop = high_resolution_clock::now();
+           time += (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
+           file << "DijkstraSequential," << false << "," << -1 << "," << graph_size << "," << density << "," << 1 << "," << time << std::endl;
+
+           // Floyd Warshall
+           // std::cout << "Floyd Warshal: .";
+           // time = 0;
+           // start = high_resolution_clock::now();
+           // g.Floyd_Warshall_Sequential();
+           // stop = high_resolution_clock::now();
+           // time += (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
+           // file << "FloydWarshallSequential" << graph_size << "," << density << "," << 1 << "," << "Floyd_Warshall" << "," << time << std::endl;
+           // std::cout << std::endl;
+
+           // Parallel ALGOS
+           std::cout << "Starting parallel algorithms for graph size " << graph_size << " and density " << density << std::endl;
+           for (size_t n_threads : n_threads_vect) {
+              g.n_threads = n_threads;
+
+              // Delta Stepping
+              for (int delta : deltas) {
+                 time = 0;
+                 g.delta = delta;
+                 auto start = high_resolution_clock::now();
+                 g.customParallelDeltaStepping(0, 101, false);
+                 auto stop = high_resolution_clock::now();
+                 time += (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
+                 file << "CustomParallelDeltaStepping," << (n_threads > 1) << "," << delta << "," << graph_size << "," << density << "," << n_threads << "," << time << std::endl;
+              }
+
+              // Floyd Warshall
+              // std::cout << "Floyd Warshal: .";
+              // time = 0;
+              // start = high_resolution_clock::now();
+              // g.Floyd_Warshall_Parallel();
+              // stop = high_resolution_clock::now();
+              // time += (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
+              // file << "FloydWarshallParallel," << (n_threads > 1) << "," << -1 << "," << graph_size << "," << density << "," << n_threads << "," << time << std::endl;
+           }
         }
-
-        // Dijkstra
-        time = 0;
-        auto start = high_resolution_clock::now();
-        g.DijkstraSourceTarget(0, 101);
-        auto stop = high_resolution_clock::now();
-        time += (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
-        file << "DijkstraSequential," << false << "," << -1 << "," << graph_size << "," << density << "," << 1 << "," << time << std::endl;
-
-        // Floyd Warshall
-        // std::cout << "Floyd Warshal: .";
-        // time = 0;
-        // start = high_resolution_clock::now();
-        // g.Floyd_Warshall_Sequential();
-        // stop = high_resolution_clock::now();
-        // time += (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
-        // file << "FloydWarshallSequential" << graph_size << "," << density << "," << 1 << "," << "Floyd_Warshall" << "," << time << std::endl;
-        // std::cout << std::endl;
-
-        // Parallel ALGOS
-        std::cout << "Starting parallel algorithms for graph size " << graph_size << " and density " << density << std::endl;
-        for (size_t n_threads : n_threads_vect) {
-          g.n_threads = n_threads;
-
-          // Delta Stepping
-          for (int delta : deltas) {
-            time = 0;
-            g.delta = delta;
-            auto start = high_resolution_clock::now();
-            g.customParallelDeltaStepping(0, 101, false);
-            auto stop = high_resolution_clock::now();
-            time += (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
-            file << "CustomParallelDeltaStepping," << (n_threads > 1) << "," << delta << "," << graph_size << "," << density << "," << n_threads << "," << time << std::endl;
-          }
-
-          // Floyd Warshall
-          // std::cout << "Floyd Warshal: .";
-          // time = 0;
-          // start = high_resolution_clock::now();
-          // g.Floyd_Warshall_Parallel();
-          // stop = high_resolution_clock::now();
-          // time += (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
-          // file << "FloydWarshallParallel," << (n_threads > 1) << "," << -1 << "," << graph_size << "," << density << "," << n_threads << "," << time << std::endl;
-        }
-      }
-    }
+     }
   }
-
-#endif
-  return 0;
+  #endif
+  exit(1); // No problem encountered
 }
