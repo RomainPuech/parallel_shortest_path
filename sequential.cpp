@@ -4,6 +4,7 @@
 #include <iostream>
 #include <limits>
 #include <list>
+#include <map>
 #include <queue>
 #include <set>
 #include <unordered_map>
@@ -282,8 +283,8 @@ public:
   }
 
   void compare_algorithms(int s, int d, bool debug = true) {
-    std::vector<std::string> names_ST{"DijkstraSourceTarget", "Delta", "DeltaNoPara", "CustomDeltaPara"};                                                                                        //, "UNWEIGHTED BFS_SourceTarget", "UNWEIGHTED DFS_SourceTarget"};
-    std::vector<SourceTargetReturn (Graph::*)(int, int)> ST_Funcs{&Graph::DijkstraSourceTarget, &Graph::deltaStepping, &Graph::parallelDeltaStepping, &Graph::customParallelDeltaSteppingForce}; //, &Graph::BFS_ST, &Graph::DFS_ST};
+    std::vector<std::string> names_ST{"DijkstraSourceTarget", /* "Delta", "DeltaNoPara",*/ "CustomDeltaPara"};                                                                                        //, "UNWEIGHTED BFS_SourceTarget", "UNWEIGHTED DFS_SourceTarget"};
+    std::vector<SourceTargetReturn (Graph::*)(int, int)> ST_Funcs{&Graph::DijkstraSourceTarget, /* &Graph::deltaStepping, &Graph::parallelDeltaStepping,*/ &Graph::customParallelDeltaSteppingForce}; //, &Graph::BFS_ST, &Graph::DFS_ST};
     for (size_t i = 0; i < names_ST.size(); i++) {
       std::cout << "   " << names_ST[i] << ": " << std::flush;
       auto start = high_resolution_clock::now();
@@ -806,6 +807,8 @@ public:
                          std::vector<int> &dist,
                          std::vector<int> &prev,
                          ll_collection<Edge> &edges_collection,
+                         std::map<int, std::mutex *> &bucket_locks,
+                         std::mutex &general_mutex,
                          int thread_id,
                          double &duration) {
 
@@ -815,18 +818,44 @@ public:
       int new_dist = dist[e.from] + e.cost;
       int v = e.vertex;
       if (new_dist < dist[v]) {
+        int bucket_index = new_dist / delta;
+        int old_bucket_index = dist[v] / delta;
         // remove from old bucket
-        if (prev[v] != -1) {
-          int old_bucket_index = dist[v] / delta;
-          buckets[old_bucket_index][v] = false;
+        if (prev[v] != -1 and (old_bucket_index != bucket_index or old_bucket_index)) {
+          /// if(buckets[old_bucket_index][v]){ //impossible that some other thread removed it
+          general_mutex.lock();
+          std::lock_guard<std::mutex> lock(*bucket_locks[old_bucket_index]);
+          general_mutex.unlock();
+          buckets[old_bucket_index].erase(v); // or turn to false?
+          //}
         }
         dist[v] = new_dist;
         prev[v] = e.from;
-        int bucket_index = new_dist / delta;
         if (buckets.find(bucket_index) == buckets.end()) {
+          // we need to create a new bucket
+          // we lock the general mutex
+          general_mutex.lock();
+          // here is the part where we need map instead of unsorted map
+          for (auto &b : bucket_locks) {
+            b.second->lock();
+          }
+          if (bucket_locks.find(bucket_index)  == bucket_locks.end()) {
+            // we need to create its mutex. 
+            std::mutex *m = new std::mutex();
+            m->lock();
+            bucket_locks[bucket_index] = m;
+          }
           std::unordered_map<int, bool> bkt = std::unordered_map<int, bool>({{e.vertex, true}});
           buckets[bucket_index] = bkt;
+          // unlock all mutices in order
+          general_mutex.unlock();
+          for (auto &b : bucket_locks) {
+            b.second->unlock();
+          }
         } else {
+          general_mutex.lock();
+          std::lock_guard<std::mutex> lock(*bucket_locks[bucket_index]);
+          general_mutex.unlock();
           buckets[bucket_index][e.vertex] = true;
         }
       }
@@ -879,11 +908,13 @@ public:
                            std::vector<int> &prev,
                            // std::vector<std::mutex> &distlocks, // no need to, now!
                            ll_collection<Edge> &edges_collection,
+                           std::map<int, std::mutex *> &bucket_locks,
+                           std::mutex &general_mutex,
                            bool force_parallelization = false) {
 
     // std::cout<<"Inside customParallelRelax"<<std::endl;
     std::vector<std::thread> threads(n_threads - 1);
-    if (force_parallelization and edges_collection.data[0].size() > 10000) {
+    if (force_parallelization or edges_collection.data[0].size() > 10000) {
 #if DEBUG
       std::cout << "Parallelizing relax operation" << std::endl;
 #endif
@@ -895,7 +926,7 @@ public:
       for (size_t i = 0; i < n_threads - 1; i++) {
         // threads[i] = std::thread(&do_nothing);
         if (edges_collection.data[i].size() > 0) {
-          threads[i] = std::thread(&Graph::customRelaxThread, this, std::ref(buckets), std::ref(dist), std::ref(prev), std::ref(edges_collection), i, std::ref(durations[i]));
+          threads[i] = std::thread(&Graph::customRelaxThread, this, std::ref(buckets), std::ref(dist), std::ref(prev), std::ref(edges_collection), std::ref(bucket_locks), std::ref(general_mutex), i, std::ref(durations[i]));
         } else {
           ignored.insert(i);
         }
@@ -904,7 +935,7 @@ public:
         // std::cout<<"Thread "<<i<<" created"<<std::endl;
       }
       if (edges_collection.data[n_threads - 1].size() > 0) {
-        customRelaxThread(buckets, dist, prev, edges_collection, n_threads - 1, durations[n_threads - 1]);
+        customRelaxThread(buckets, dist, prev, edges_collection, bucket_locks, general_mutex, n_threads - 1, durations[n_threads - 1]);
       } else {
         ignored.insert(n_threads - 1);
       }
@@ -935,7 +966,7 @@ public:
         // we don t parallelize the relax operation
         double duration = 0.;
         if (edges_collection.data[i].size() > 0) {
-          customRelaxThread(buckets, dist, prev, edges_collection, i, duration);
+          customRelaxThread(buckets, dist, prev, edges_collection, bucket_locks, general_mutex, i, duration);
         }
       }
     }
@@ -1031,7 +1062,8 @@ public:
     std::vector<int> dist(this->V, INT_MAX);
     std::vector<int> prev(this->V, -1);
     std::unordered_map<int, std::unordered_map<int, bool>> buckets;
-    // std::vector<std::mutex> distlocks(this->V); // no need to anymore
+    std::map<int, std::mutex *> bucket_locks({{0, new std::mutex()}});
+    std::mutex general_mutex;
     dist[source] = 0;
     buckets[0][source] = true;
 
@@ -1074,7 +1106,7 @@ public:
             }
           }
         }
-        customParallelRelax(buckets, dist, prev, light_edges, force_parallelization);
+        customParallelRelax(buckets, dist, prev, light_edges, bucket_locks, general_mutex, force_parallelization);
         light_edges.reset();
         bucket = buckets[i];
         iteration_light++;
@@ -1086,7 +1118,7 @@ public:
       stop = high_resolution_clock::now();
       duration_exploration += (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
       start = high_resolution_clock::now();
-      customParallelRelax(buckets, dist, prev, heavy_edges, force_parallelization);
+      customParallelRelax(buckets, dist, prev, heavy_edges, bucket_locks, general_mutex, force_parallelization);
       stop = high_resolution_clock::now();
       heavy_edges.reset();
       duration_heavy += (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
@@ -1120,8 +1152,8 @@ public:
 
 int main(int argc, char *argv[]) {
   // process input
-  int nodes = 20;
-  double density = 0.1;
+  int nodes = 10000;
+  double density = 0.01;
   int max_cost = 10;
   int n_threads = 8;
   int delta = 4;
@@ -1151,20 +1183,20 @@ int main(int argc, char *argv[]) {
   }
 
   // "V, density, max_cost, n_threads, delta"
-  // int res1 = 0;
-  // int res2 = 0;
-  // while (res1 == res2) {
-  //   Graph g = Graph::generate_graph_parallel(nodes, density, max_cost, n_threads, delta); // Graph::generate_network_parallel(20, 1, 0.15, 0.1, 10, 1, 3);
-  //   g.save_to_file("graph.txt");
-  //   res1 = g.customParallelDeltaStepping(0, nodes - 1, true).distance[nodes - 1];
-  //   res2 = g.DijkstraSourceTarget(0, nodes - 1).distance[nodes - 1];
-  // }
-  // std::cout << "Done: " << res2 << res1 << std::endl;
+  int res1 = 0;
+  int res2 = 0;
+  while (res1 == res2) {
+    Graph g = Graph::generate_graph_parallel(nodes, density, max_cost, n_threads, delta); // Graph::generate_network_parallel(20, 1, 0.15, 0.1, 10, 1, 3);
+    g.save_to_file("graph.txt");
+    res1 = g.customParallelDeltaStepping(0, nodes - 1, true).distance[nodes - 1];
+    res2 = g.DijkstraSourceTarget(0, nodes - 1).distance[nodes - 1];
+  }
+  std::cout << "Done: " << res2 << res1 << std::endl;
 
-  Graph g = Graph(nodes, 4, 1);
-  g.load_from_file("graph.txt");
-  g.display();
-  g.compare_algorithms(0, nodes - 1, false);
+  //Graph g = Graph::generate_graph_parallel(nodes, density, max_cost, n_threads, delta); // Graph::generate_network_parallel(20, 1, 0.15, 0.1, 10, 1, 3);
+  // g.save_to_file("graph.txt");
+  //g.load_from_file("graph.txt");
+  //g.compare_algorithms(0, nodes - 1, false);
 
 #if ANALYSIS
   ////////////////////////////////////////////
