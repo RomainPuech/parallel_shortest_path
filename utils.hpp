@@ -26,8 +26,9 @@ template <typename T>
 struct perishable_pointer {
   T *ptr;
   int tag;
-  perishable_pointer() : ptr(nullptr), tag(-1) {}
-  perishable_pointer(T *ptr_, int tag_) : ptr(ptr_), tag(tag_) {}
+  int ll_index;
+  perishable_pointer() : ptr(nullptr), tag(-1), ll_index(-1) {}
+  perishable_pointer(T *ptr_, int tag_, int ll_index_) : ptr(ptr_), tag(tag_), ll_index(ll_index_) {}
 };
 
 template <typename T>
@@ -54,21 +55,31 @@ public:
   }
 
   bool replace_if_better(T element, int index, int current_tag, std::vector<int> &dist) {
-    int candidate_dist = dist[element.from]+element.cost;
-    if (( candidate_dist < dist[element.vertex]) and ((perishable_pointers[index].tag != current_tag) || (candidate_dist <  dist[(perishable_pointers[index].ptr)->from] + (perishable_pointers[index].ptr)->cost   ))) {
+    int candidate_dist = dist[element.from] + element.cost;
+    if ((candidate_dist < dist[element.vertex]) and ((perishable_pointers[index].tag != current_tag) || (candidate_dist < dist[(perishable_pointers[index].ptr)->from] + (perishable_pointers[index].ptr)->cost))) {
       // take a lock.
-      // no need to lock distance as it is not modified in this phase
       V_locks[index].lock();
-      if ((perishable_pointers[index].tag != current_tag) || ((perishable_pointers[index].ptr)->cost + dist[(perishable_pointers[index].ptr)->from] < dist[(perishable_pointers[index].ptr)->vertex])) {
-        int ll_index = counter++;
-        p_locks[ll_index % p].lock();
-        data[ll_index % p].push_back(element); // TODO: define non-blocking pushback, that returns pointer to it
-        perishable_pointers[index] = perishable_pointer(&data[ll_index % p].back(), current_tag);
-        p_locks[ll_index % p].unlock();
+      // no need to lock distance as it is not modified in this phase
+      if ((candidate_dist < dist[element.vertex]) and ((perishable_pointers[index].tag != current_tag) || (candidate_dist < dist[(perishable_pointers[index].ptr)->from] + (perishable_pointers[index].ptr)->cost))) {
+        if(perishable_pointers[index].tag != current_tag) {
+          // if the element is not in the collection, just add it
+          int ll_index = counter++;
+          p_locks[ll_index % p].lock();
+          data[ll_index % p].push_back(element); // TODO: define non-blocking pushback, that returns pointer to it
+          perishable_pointers[index] = perishable_pointer(&data[ll_index % p].back(), current_tag, ll_index % p);
+          p_locks[ll_index % p].unlock();
+        } else {
+          // if the element is in the collection, update it
+          p_locks[perishable_pointers[index].ll_index].lock();
+          (perishable_pointers[index].ptr)->from = element.from; // notice: only defined for T = Edge
+          (perishable_pointers[index].ptr)->cost = element.cost;
+          p_locks[perishable_pointers[index].ll_index].unlock();
+        }
         V_locks[index].unlock();
         return true;
       }
     }
+    V_locks[index].unlock();
     return false;
   }
 
