@@ -915,9 +915,7 @@ public:
     // std::cout<<"Inside customParallelRelax"<<std::endl;
     std::vector<std::thread> threads(n_threads - 1);
     if (force_parallelization and edges_collection.data[0].size() > 10000) {
-#if DEBUG
-      // std::cout << "Parallelizing relax operation" << std::endl;
-#endif
+
       double total_duration = 0.;
       double durations[n_threads];
       auto start = high_resolution_clock::now();
@@ -930,9 +928,6 @@ public:
         } else {
           ignored.insert(i);
         }
-        // customRelaxThread(buckets, dist, prev, edges_collection,i);
-        // threads[i].join();
-        // std::cout<<"Thread "<<i<<" created"<<std::endl;
       }
       if (edges_collection.data[n_threads - 1].size() > 0) {
         customRelaxThread(buckets, dist, prev, edges_collection, bucket_locks, general_mutex, n_threads - 1, durations[n_threads - 1]);
@@ -953,13 +948,13 @@ public:
           duration_operations += durations[i];
         }
       }
-      // std::cout<<"Total duration: "<<total_duration<<std::endl;
-      // std::cout<<"Sum Operations duration: "<<duration_operations<<std::endl;
+      #if DEBUG
       if (duration_operations > total_duration) {
-        // std::cout<<"worth it"<<std::endl;
+        std::cout<<"worth it"<<std::endl;
       } else {
-        // std::cout<<"!NOT WORTH IT!"<<std::endl;
+        std::cout<<"!NOT WORTH IT!"<<std::endl;
       }
+      #endif
       // std::cout<<"sublist length: "<<edges_collection.data[0].size()<<std::endl;
     } else {
       for (size_t i = 0; i < n_threads; i++) {
@@ -970,16 +965,18 @@ public:
         }
       }
     }
-    // std::cout<<"Total duration: "<<total_duration<<std::endl;
-    // std::cout<<"Operations duration: "<<duration_operations<<std::endl;
+    #if DEBUG
+    std::cout<<"Total duration: "<<total_duration<<std::endl;
+    std::cout<<"Operations duration: "<<duration_operations<<std::endl;
+    #endif
 
-#if DEBUG
+    #if DEBUG
     int total_length = 0;
     for (size_t i = 0; i < n_threads; i++) {
       total_length += edges_collection.data[i].size();
     }
     // std::cout << "Total length: " << total_length << std::endl;
-#endif
+    #endif  
   }
 
   SourceTargetReturn parallelDeltaStepping(int source, int destination) {
@@ -1059,12 +1056,10 @@ public:
   }
 
   void exploreNodesThread(std::unordered_map<int, bool>::iterator start, std::unordered_map<int, bool>::iterator end, std::vector<int> &dist, ll_collection<Edge> &light_edges, ll_collection<Edge> &heavy_edges, int iteration_light, int iteration_heavy, int delta) {
-    // std::cout << "Thread created" << std::endl;
     int counter = 0;
     while (start != end) {
       counter++;
       if (counter % 100 == 0) {
-        // std::cout<<"Thread "<<std::this_thread::get_id()<<" is at "<<counter<<std::endl;
       }
       int u = start->first;
       bool flag = start->second;
@@ -1079,7 +1074,6 @@ public:
       }
       start++;
     }
-    // std::cout << "Out of T" << std::endl;
   }
 
   SourceTargetReturn customParallelDeltaStepping(int source, int destination, double force_parallelization) {
@@ -1146,8 +1140,6 @@ public:
       }
       buckets.erase(i);
       // Process heavy edges
-      // std::cout<<"Heavy Request created "<<iteration<<std::endl;
-      // heavy_edges.display();
       stop = high_resolution_clock::now();
       duration_exploration += (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
       start = high_resolution_clock::now();
@@ -1158,10 +1150,10 @@ public:
       iteration_heavy++;
     }
 
-#if DEBUG
+    #if DEBUG
     std::cout << "Exploration time: " << duration_exploration << " milliseconds. \n";
     std::cout << "Heavy edges time: " << duration_heavy << " milliseconds. \n";
-#endif
+    #endif
 
     // Make the return struct
     std::vector<int> rpath;
@@ -1261,7 +1253,7 @@ int main(int argc, char *argv[]) {
   const size_t n_repeat = 3;
 
   // array of graph sizes and density
-  std::vector<size_t> graph_sizes = {500, 1000, 5000}; //, 10000, 50000, 100000};
+  std::vector<size_t> graph_sizes = {200, 500, 1000, 2500, 5000, 7500, 10000};
 
   std::vector<double> densities = {0.3, 0.5, 0.7};
 
@@ -1297,6 +1289,7 @@ int main(int argc, char *argv[]) {
   std::time_t t = std::time(0);
   std::tm* now = std::localtime(&t);
   std::string filename = "results_" + std::to_string(now->tm_year + 1900) + "-" + std::to_string(now->tm_mon + 1) + "-" + std::to_string(now->tm_mday) + "-" + std::to_string(now->tm_hour) + "-" + std::to_string(now->tm_min) + "-" + std::to_string(now->tm_sec) + ".csv";
+  filename = "results_25000_0.7.csv";
   file.open(filename);
 
   std::cout << "Storing results in " << filename << std::endl;
@@ -1311,13 +1304,11 @@ int main(int argc, char *argv[]) {
      for (size_t graph_size : graph_sizes) {
         for (double density : densities) {
 
-           std::cout << "Iteration " << count++ << " of " << graph_sizes.size() * densities.size() * n_repeat << std::endl;
            double time = 0;
            size_t n_threads = 4;
            int delta = 1;
            size_t max_cost = 100;
 
-           // Graph g = Graph::generate_graph_parallel(graph_size, density, 100, n_threads, delta);
            Graph g = Graph::generate_graph_parallel(graph_size, density, max_cost, n_threads, delta);
 
            // Sequential ALGOS
