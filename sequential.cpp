@@ -1266,27 +1266,27 @@ int main(int argc, char *argv[]) {
   const size_t n_repeat = 3;
 
   // array of graph sizes and density
-  std::vector<size_t> graph_sizes = {100, 200, 500, 750, 1250};
+  std::vector<std::vector<size_t>> graph_sizes = {{10, 10}, {10, 20}, {20, 25}, {20, 40}, {30, 60}};
 
-  std::vector<double> densities = {0.3, 0.5, 0.7};
+  std::vector<std::vector<double>> densities = {{0.3, 0.6}, {0.15, 0.6}, {0.05, 0.6}};
 
   // array of thread_numners
   std::vector<size_t> n_threads_vect = {6, 12, 16};
 
   // array of deltas
-  std::vector<int> deltas = {1, 2};
+  std::vector<int> deltas = {1};
 
   std::cout << "Starting algiorithms ..." << std::endl;
 
   std::cout << "Repeating each experiment " << n_repeat << " times" << std::endl;
   std::cout << "Graph sizes: ";
   for (size_t i = 0; i < graph_sizes.size(); i++) {
-    std::cout << graph_sizes[i] << " ";
+    std::cout << graph_sizes[i][0] << "," << graph_sizes[i][1] << " ";
   }
   std::cout << std::endl;
   std::cout << "Densities: ";
   for (size_t i = 0; i < densities.size(); i++) {
-    std::cout << densities[i] << " ";
+    std::cout << densities[i][0] << "," << densities[i][1] << " ";
   }
   std::cout << std::endl;
   std::cout << "Total number of graphs: " << graph_sizes.size() * densities.size() << std::endl;
@@ -1302,7 +1302,7 @@ int main(int argc, char *argv[]) {
   std::time_t t = std::time(0);
   std::tm *now = std::localtime(&t);
   std::string filename = "results_" + std::to_string(now->tm_year + 1900) + "-" + std::to_string(now->tm_mon + 1) + "-" + std::to_string(now->tm_mday) + "-" + std::to_string(now->tm_hour) + "-" + std::to_string(now->tm_min) + "-" + std::to_string(now->tm_sec) + ".csv";
-  filename = "results_25000_0.7.csv";
+  filename = "results_25000_0.7_network.csv";
   file.open(filename);
 
   std::cout << "Storing results in " << filename << std::endl;
@@ -1314,18 +1314,18 @@ int main(int argc, char *argv[]) {
   for (size_t i = 0; i < n_repeat; i++) {
     std::cout << "Repetition " << i + 1 << " of " << n_repeat << std::endl;
     // Loop over the graph sizes
-    for (size_t graph_size : graph_sizes) {
-      for (double density : densities) {
+    for (std::vector<size_t> graph_size : graph_sizes) {
+      for (std::vector<double> density : densities) {
 
         double time = 0;
         size_t n_threads = 4;
         int delta = 1;
         size_t max_cost = 100;
 
-        Graph g = Graph::generate_graph_parallel(graph_size, density, max_cost, n_threads, delta);
+        Graph g = Graph::generate_network_parallel(graph_size[1], graph_size[0], density[1], density[0], max_cost, n_threads, delta);
 
         // Sequential ALGOS
-        std::cout << "Starting sequential algorithms for graph size " << graph_size << " and density " << density << std::endl;
+        std::cout << "Starting sequential algorithms for graph size " << graph_size[0] << " " << graph_size[1] << " and density " << density[0] << " " << density[1] << std::endl;
         // Delta Stepping
         time = 0;
         g.delta = delta;
@@ -1333,12 +1333,12 @@ int main(int argc, char *argv[]) {
         auto distance1 = g.Floyd_Warshall_Sequential().distances;
         auto stop = high_resolution_clock::now();
         time += (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
-        file << "FloydSequential," << false << "," << -1 << "," << graph_size << "," << density << "," << 1 << "," << time << "," << i << std::endl;
+        file << "FloydSequential," << false << "," << -1 << "," << graph_size[0] << ";" << graph_size[1] << "," << density[0] << ";" << density[1] << "," << 1 << "," << time << "," << i << std::endl;
 
         // Dijkstra
 
         // Parallel ALGOS
-        std::cout << "Starting parallel algorithms for graph size " << graph_size << " and density " << density << std::endl;
+        std::cout << "Starting parallel algorithms for graph size " << graph_size[0] << " " << graph_size[1] << " and density " << density[0] << " " << density[1] << std::endl;
         for (size_t n_threads : n_threads_vect) {
           std::cout << "Running with " << n_threads << " threads" << std::endl;
           g.n_threads = n_threads;
@@ -1349,14 +1349,14 @@ int main(int argc, char *argv[]) {
           auto distance2 = g.Floyd_Warshall_Parallel().distances;
           auto stop = high_resolution_clock::now();
           time += (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
-          file << "FloydParallel," << true << "," << -1 << "," << graph_size << "," << density << "," << 1 << "," << time << "," << i << std::endl;
+          file << "FloydParallel," << true << "," << -1 << "," << graph_size[0] << ";" << graph_size[1] << "," << density[0] << ";" << density[1] << "," << 1 << "," << time << "," << i << std::endl;
 
           time = 0;
           start = high_resolution_clock::now();
           auto distanceD = g.AllTerminalDijkstra().distances;
           stop = high_resolution_clock::now();
           time += (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
-          file << "DijkstraParallel," << true << "," << -1 << "," << graph_size << "," << density << "," << 1 << "," << time << "," << i << std::endl;
+          file << "DijkstraParallel," << true << "," << -1 << "," << graph_size[0] << ";" << graph_size[1] << "," << density[0] << ";" << density[1] << "," << 1 << "," << time << "," << i << std::endl;
 
           if (distance1 != distance2){
             std::cout << "Floyd Warshall Parallel is not same as Sequential" << std::endl;
@@ -1379,7 +1379,7 @@ int main(int argc, char *argv[]) {
             auto distance3 = g.AllTerminalDelta().distances;
             auto stop = high_resolution_clock::now();
             time += (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
-            file << "ParallelDeltaSteppingAllTerminal," << (n_threads > 1) << "," << delta << "," << graph_size << "," << density << "," << n_threads << "," << time << "," << i << std::endl;
+            file << "ParallelDeltaSteppingAllTerminal," << (n_threads > 1) << "," << delta << "," << graph_size[0] << ";" << graph_size[1] << "," << density[0] << ";" << density[1] << "," << n_threads << "," << time << "," << i << std::endl;
 
             if (distance1 != distance3){
               std::cout << "Delta Stepping Parallel is not same as Floyd Warshall Sequential" << std::endl;

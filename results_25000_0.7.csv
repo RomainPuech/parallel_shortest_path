@@ -154,3 +154,4 @@ ParallelDeltaSteppingAllTerminal,1,2,750,0.7,12,14775.9,0
 FloydParallel,1,-1,750,0.7,1,164.482,0
 DijkstraParallel,1,-1,750,0.7,1,1005.9,0
 ParallelDeltaSteppingAllTerminal,1,1,750,0.7,16,8202.02,0
+ParallelDeltaSteppingAllTerminal,1,2,750,0.7,16,15378.5,0
