@@ -404,6 +404,10 @@ public:
     return SourceAll_To_AllTerminal(customParallelDeltaSteppingForceAll);
   }
 
+  AllTerminalReturn AllTerminalDijkstra(){
+    return SourceAll_To_AllTerminalParallel(DijkstraSourceAll);
+  }
+
   AllTerminalReturn SourceAll_To_AllTerminalParallel(SourceAllReturn (Graph::*F)(int, int)) {
     if (n_threads < 1) {
       std::cout << "Invalid number of threads" << std::endl;
@@ -1257,20 +1261,20 @@ int main(int argc, char *argv[]) {
 
 #endif
 #if ANALYSIS
-  std::cout << "Yes" << std::endl;
+  // PARAMETERS
   // number of times to repeat each experiment
   const size_t n_repeat = 3;
 
   // array of graph sizes and density
-  std::vector<size_t> graph_sizes = {100, 200, 500, 1000, 1500};
+  std::vector<size_t> graph_sizes = {100, 200, 500, 750, 1250};
 
   std::vector<double> densities = {0.3, 0.5, 0.7};
 
   // array of thread_numners
-  std::vector<size_t> n_threads_vect = {4, 8, 12, 24};
+  std::vector<size_t> n_threads_vect = {6, 12, 16};
 
   // array of deltas
-  std::vector<int> deltas = {1, 2, 4};
+  std::vector<int> deltas = {1, 2};
 
   std::cout << "Starting algiorithms ..." << std::endl;
 
@@ -1326,7 +1330,7 @@ int main(int argc, char *argv[]) {
         time = 0;
         g.delta = delta;
         auto start = high_resolution_clock::now();
-        g.Floyd_Warshall_Sequential();
+        auto distance1 = g.Floyd_Warshall_Sequential().distances;
         auto stop = high_resolution_clock::now();
         time += (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
         file << "FloydSequential," << false << "," << -1 << "," << graph_size << "," << density << "," << 1 << "," << time << "," << i << std::endl;
@@ -1336,28 +1340,51 @@ int main(int argc, char *argv[]) {
         // Parallel ALGOS
         std::cout << "Starting parallel algorithms for graph size " << graph_size << " and density " << density << std::endl;
         for (size_t n_threads : n_threads_vect) {
+          std::cout << "Running with " << n_threads << " threads" << std::endl;
           g.n_threads = n_threads;
 
           // floyd parallel
           time = 0;
           auto start = high_resolution_clock::now();
-          g.Floyd_Warshall_Parallel();
+          auto distance2 = g.Floyd_Warshall_Parallel().distances;
           auto stop = high_resolution_clock::now();
           time += (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
           file << "FloydParallel," << true << "," << -1 << "," << graph_size << "," << density << "," << 1 << "," << time << "," << i << std::endl;
 
+          time = 0;
+          start = high_resolution_clock::now();
+          auto distanceD = g.AllTerminalDijkstra().distances;
+          stop = high_resolution_clock::now();
+          time += (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
+          file << "DijkstraParallel," << true << "," << -1 << "," << graph_size << "," << density << "," << 1 << "," << time << "," << i << std::endl;
+
+          if (distance1 != distance2){
+            std::cout << "Floyd Warshall Parallel is not same as Sequential" << std::endl;
+            throw "Floyd Warshall Parallel is not same as Sequential";
+          }
+          if (distance1 != distanceD){
+            std::cout << "Dijkstra Parallel is not same as Sequential Floyd" << std::endl;
+            throw "Dijkstra Parallel is not same as Sequential";
+          }
+
           // Delta Stepping
           for (int delta : deltas) {
+            std::cout << "Running delta stepping for delta: " << delta << std::endl;
             time = 0;
             g.delta = delta;
             auto start = high_resolution_clock::now();
             int source = 0;
             int target = 101;
             bool force_parallel = true;
-            g.AllTerminalDelta();
+            auto distance3 = g.AllTerminalDelta().distances;
             auto stop = high_resolution_clock::now();
             time += (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
             file << "ParallelDeltaSteppingAllTerminal," << (n_threads > 1) << "," << delta << "," << graph_size << "," << density << "," << n_threads << "," << time << "," << i << std::endl;
+
+            if (distance1 != distance3){
+              std::cout << "Delta Stepping Parallel is not same as Floyd Warshall Sequential" << std::endl;
+              throw "Delta Stepping Parallel is not same as Floyd Warshall Seq";
+            }
           }
         }
       }

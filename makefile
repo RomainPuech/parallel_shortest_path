@@ -1,5 +1,5 @@
 CC = g++
-CFLAGS = -Wall -Wextra -Wpedantic -O3 -lpthread -std=c++20
+CFLAGS = -Wall -Wextra -Wpedantic -Ofast -flto -funroll-loops -finline-functions -march=native -lpthread -std=c++20
 CFLAGSDEBUG = -Wall -Wextra -Wpedantic -lpthread -std=c++20 -g
 
 targets: sequential
