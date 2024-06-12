@@ -38,6 +38,10 @@ public:
     n_threads = std::min(n_threads_, (size_t)V);
   }
 
+  ~Graph() {
+    delete adj;
+  }
+
   void addEdge(size_t v, size_t w, size_t c) {
     if (v < V && w < V) {
       // Any graph generation function in parallel calls this with disjoint set of v from each thread
@@ -72,6 +76,7 @@ public:
   }
 
   void load_from_file(std::string filename) {
+    delete adj;
     adj = new std::unordered_set<Edge>[V];
     std::ifstream file;
     file.open(filename);
@@ -1160,6 +1165,11 @@ public:
     std::cout << "Heavy edges time: " << duration_heavy << " milliseconds. \n";
 #endif
 
+    // free bucket locks
+    for (auto &b : bucket_locks) {
+      delete b.second;
+    }
+
     // Make the return struct
     std::vector<int> rpath;
     for (int at = destination; at != -1; at = prev[at]) {
@@ -1169,6 +1179,7 @@ public:
     for (size_t i = 0; i < rpath.size(); ++i) {
       path.push_back(rpath[rpath.size() - i - 1]);
     }
+
     return SourceTargetReturn(path, dist);
   }
 
