@@ -12,12 +12,14 @@ most standard shortest path algorithms, $\Delta$-stepping algorithm.
 
 [Recent Developments](https://ieeexplore.ieee.org/abstract/document/9006237)
 
-The file [data](./data/) contains the different runtimes obtained over multiple runs for different graphs of different sizes. Here are the values we studied:
+The file [data](./data/) contains the different runtimes obtained over multiple runs for different graphs of different sizes. 
 
-Parameter | Values
---- | ---
-Graph Size | 200, 500, 1000, 2500, 7500, 10000
-Graph Density | 0.3, 0.5, 0.7
-N Threads | 1, 2, 4, 8, 12, 16, 20, 24, 25
-Delta | 1, 2, 4, 6, 8
+## License
+[![License: MIT](https://img.shields.io/badge/License-MIT-orange.svg)](https://opensource.org/licenses/MIT)
 
+This project is licensed under the MIT License. See the [`LICENSE`](LICENSE) file for more details. 
+
+
+## Status
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-orange.svg)](https://opensource.org/licenses/MIT)

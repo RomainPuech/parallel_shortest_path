@@ -3,7 +3,11 @@
 *.exe
 .vscode/settings.json
 /.vscode
+.DS_Store
 
 # Jupyter Notebook
 .ipynb_checkpoints/
-# data/  # To remove later
+
+# Do not include data files
+/data
+/images
