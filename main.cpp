@@ -1065,10 +1065,10 @@ int main(int argc, char *argv[]) {
 #if not ANALYSIS
   // process input
   int nodes = 10000;
-  double density = 0.01;
+  double density = 0.1;
   int max_cost = 100;
   int n_threads = 1;
-  int delta = 2;
+  int delta = 12;
   bool load_previous = false;
   bool save = true;
 
@@ -1106,20 +1106,15 @@ int main(int argc, char *argv[]) {
     if(save){
       g.save_to_file("graph.txt");
     }
-    auto start = high_resolution_clock::now();
-    res2 = g.DijkstraSourceTarget(0, nodes - 1).distance[nodes - 1];
-    auto stop = high_resolution_clock::now();
-    double time = (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
-    std::cout << "Dijkstra: " << time << " ms" << std::endl;
 
     std::cout << "\n";
 
     std::cout << "8 threads: \n";
     g.n_threads = 8;
-    start = high_resolution_clock::now();
+    auto start = high_resolution_clock::now();
     res1 = g.customParallelDeltaStepping(0, nodes - 1, true).distance[nodes - 1];
-    stop = high_resolution_clock::now();
-    time = (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
+    auto stop = high_resolution_clock::now();
+    auto time = (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
     std::cout << "Delta Stepping " << time << " ms" << std::endl;
 
     std::cout << "\n";
@@ -1127,7 +1122,7 @@ int main(int argc, char *argv[]) {
     g.n_threads = 2;
     std::cout << "2 threads: \n";
     start = high_resolution_clock::now();
-    res3 = g.customParallelDeltaStepping(0, nodes - 1, true).distance[nodes - 1];
+    res2 = g.customParallelDeltaStepping(0, nodes - 1, true).distance[nodes - 1];
     stop = high_resolution_clock::now();
     time = (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
     std::cout << "Delta Stepping " << time << " ms" << std::endl;
