@@ -38,10 +38,6 @@ public:
     n_threads = std::min(n_threads_, (size_t)V);
   }
 
-  ~Graph() {
-    delete adj;
-  }
-
   void addEdge(size_t v, size_t w, size_t c) {
     if (v < V && w < V) {
       // Any graph generation function in parallel calls this with disjoint set of v from each thread
