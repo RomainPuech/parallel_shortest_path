@@ -1268,7 +1268,7 @@ int main(int argc, char *argv[]) {
   // array of graph sizes and density
   std::vector<std::vector<size_t>> graph_sizes = {{10, 10}, {10, 20}, {20, 25}, {20, 40}, {30, 60}};
 
-  std::vector<std::vector<double>> densities = {{0.3, 0.6}, {0.15, 0.6}, {0.05, 0.6}};
+  std::vector<std::vector<double>> densities = {{0.5, 0.9}, {0.3, 0.6}, {0.15, 0.6}, {0.05, 0.6}};
 
   // array of thread_numners
   std::vector<size_t> n_threads_vect = {6, 12, 16};
@@ -1349,14 +1349,14 @@ int main(int argc, char *argv[]) {
           auto distance2 = g.Floyd_Warshall_Parallel().distances;
           auto stop = high_resolution_clock::now();
           time += (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
-          file << "FloydParallel," << true << "," << -1 << "," << graph_size[0] << ";" << graph_size[1] << "," << density[0] << ";" << density[1] << "," << 1 << "," << time << "," << i << std::endl;
+          file << "FloydParallel," << true << "," << -1 << "," << graph_size[0] << ";" << graph_size[1] << "," << density[0] << ";" << density[1] << "," << n_threads << "," << time << "," << i << std::endl;
 
           time = 0;
           start = high_resolution_clock::now();
           auto distanceD = g.AllTerminalDijkstra().distances;
           stop = high_resolution_clock::now();
           time += (double)(duration_cast<microseconds>(stop - start)).count() / 1000;
-          file << "DijkstraParallel," << true << "," << -1 << "," << graph_size[0] << ";" << graph_size[1] << "," << density[0] << ";" << density[1] << "," << 1 << "," << time << "," << i << std::endl;
+          file << "DijkstraParallel," << true << "," << -1 << "," << graph_size[0] << ";" << graph_size[1] << "," << density[0] << ";" << density[1] << "," << n_threads << "," << time << "," << i << std::endl;
 
           if (distance1 != distance2){
             std::cout << "Floyd Warshall Parallel is not same as Sequential" << std::endl;
